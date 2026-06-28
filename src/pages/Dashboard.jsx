@@ -29,8 +29,8 @@ export default function Dashboard() {
   useEffect(() => {
     if (!selectedMachine || !user) return;
     
-    // Listen to current sensor
-    const sensorRef = ref(rtdb, `machines/${user.uid}/sensors/sct013`);
+    // Listen to current sensor (old firmware path)
+    const sensorRef = ref(rtdb, `sensors/${user.uid}/sct013`);
     const unsubCurrent = onValue(sensorRef, (snap) => {
       const data = snap.val();
       if (!data) return;

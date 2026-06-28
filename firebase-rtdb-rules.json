@@ -2,9 +2,9 @@
   "rules": {
     "machines": {
       "$machineId": {
-        ".read": "auth != null",
-        ".write": "auth != null",
         "sensors": {
+          ".read": true,
+          ".write": true,
           "sct013": {
             ".indexOn": ["timestamp"]
           },
@@ -13,12 +13,12 @@
           }
         },
         "commands": {
-          ".read": "auth != null",
-          ".write": "auth != null"
+          ".read": true,
+          ".write": true
         },
         "status": {
-          ".read": "auth != null",
-          ".write": "auth != null"
+          ".read": true,
+          ".write": true
         }
       }
     }
