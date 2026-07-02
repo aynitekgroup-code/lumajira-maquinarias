@@ -29,7 +29,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (!selectedMachine || !user) return;
     
-    // Listen to current sensor (old firmware path)
+    // Listen to current sensor
     const sensorRef = ref(rtdb, `sensors/${user.uid}/sct013`);
     const unsubCurrent = onValue(sensorRef, (snap) => {
       const data = snap.val();
@@ -56,7 +56,7 @@ export default function Dashboard() {
     });
 
     // Listen to temperature sensor
-    const tempRef = ref(rtdb, `machines/${user.uid}/sensors/thermistor`);
+    const tempRef = ref(rtdb, `sensors/${user.uid}/thermistor`);
     const unsubTemp = onValue(tempRef, (snap) => {
       const data = snap.val();
       if (!data) return;
