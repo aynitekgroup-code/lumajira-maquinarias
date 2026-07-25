@@ -1,3 +1,5 @@
+import { getAIRecommendation } from '../services/openrouter';
+
 export const ALERT_THRESHOLDS = {
   current: {
     warning: 8.0,
@@ -120,4 +122,24 @@ export function predictiveMaintenance(readings) {
     });
   }
   return alerts;
+}
+
+export async function getSmartAlert(alert, sensorData) {
+  const alertData = {
+    level: alert.level,
+    message: alert.message,
+    currentA: sensorData?.currentA,
+    tempC: sensorData?.tempC,
+    machineState: sensorData?.machineState,
+    trend: sensorData?.trend,
+    variance: sensorData?.variance,
+  };
+
+  const aiResponse = await getAIRecommendation(alertData);
+
+  return {
+    ...alert,
+    aiExplanation: aiResponse.explanation,
+    aiFix: aiResponse.fix,
+  };
 }

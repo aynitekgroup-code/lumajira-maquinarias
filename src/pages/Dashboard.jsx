@@ -5,7 +5,7 @@ import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { useAuth } from '../hooks/useAuth';
 import { rtdb, db } from '../firebase/config';
-import { analyzeCurrentReading, analyzeTemperatureReading, predictiveMaintenance } from '../utils/alerts';
+import { analyzeCurrentReading, analyzeTemperatureReading, predictiveMaintenance, getSmartAlert } from '../utils/alerts';
 import { format } from 'date-fns';
 import ControlPanel from '../components/ControlPanel';
 
@@ -21,6 +21,8 @@ export default function Dashboard() {
   const [alerts, setAlerts] = useState([]);
   const [currentStatus, setCurrentStatus] = useState(null);
   const [tempStatus, setTempStatus] = useState(null);
+  const [aiAlerts, setAiAlerts] = useState({});
+  const [aiLoading, setAiLoading] = useState({});
 
   useEffect(() => {
     loadMachines();
@@ -114,6 +116,21 @@ export default function Dashboard() {
   async function handleLogout() {
     await logout();
     navigate('/login');
+  }
+
+  async function handleGetAIRecommendation(alert, index) {
+    setAiLoading((prev) => ({ ...prev, [index]: true }));
+    const latestTemp = tempReadings.length > 0 ? tempReadings[tempReadings.length - 1].value : null;
+    const latestCurrent = readings.length > 0 ? readings[readings.length - 1].value : null;
+
+    const smartAlert = await getSmartAlert(alert, {
+      currentA: latestCurrent,
+      tempC: latestTemp,
+      machineState: null,
+    });
+
+    setAiAlerts((prev) => ({ ...prev, [index]: smartAlert }));
+    setAiLoading((prev) => ({ ...prev, [index]: false }));
   }
 
   const latestReading = readings[readings.length - 1];
@@ -279,21 +296,62 @@ export default function Dashboard() {
                     border: `1px solid ${a.level === 'critical' ? '#7a2020' : '#6b5500'}`,
                     borderRadius: '12px',
                     padding: '1rem 1.25rem',
-                    display: 'flex',
-                    gap: '1rem',
-                    alignItems: 'flex-start',
                   }}>
-                    <span style={{ fontSize: '1.3rem' }}>{a.level === 'critical' ? '🚨' : '⚠️'}</span>
-                    <div>
-                      <div style={{ fontWeight: '600', color: a.level === 'critical' ? '#f09595' : '#fac775', marginBottom: '0.2rem' }}>
-                        {a.message}
-                      </div>
-                      {a.maintenance && (
-                        <div style={{ fontSize: '0.875rem', color: a.level === 'critical' ? '#e24b4a88' : '#ba751788' }}>
-                          🔧 {a.maintenance}
+                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '1.3rem' }}>{a.level === 'critical' ? '🚨' : '⚠️'}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: '600', color: a.level === 'critical' ? '#f09595' : '#fac775', marginBottom: '0.2rem' }}>
+                          {a.message}
                         </div>
+                        {a.maintenance && (
+                          <div style={{ fontSize: '0.875rem', color: a.level === 'critical' ? '#e24b4a88' : '#ba751788' }}>
+                            🔧 {a.maintenance}
+                          </div>
+                        )}
+                      </div>
+                      {!aiAlerts[i] && (
+                        <button
+                          onClick={() => handleGetAIRecommendation(a, i)}
+                          disabled={aiLoading[i]}
+                          style={{
+                            background: '#1d4e8f',
+                            border: 'none',
+                            borderRadius: '8px',
+                            color: '#fff',
+                            padding: '0.4rem 0.8rem',
+                            cursor: aiLoading[i] ? 'wait' : 'pointer',
+                            fontSize: '0.75rem',
+                            fontWeight: '600',
+                            whiteSpace: 'nowrap',
+                            opacity: aiLoading[i] ? 0.6 : 1,
+                          }}
+                        >
+                          {aiLoading[i] ? '⏳ Analizando...' : '🤖 Explicar con IA'}
+                        </button>
                       )}
                     </div>
+
+                    {aiAlerts[i] && (
+                      <div style={{
+                        marginTop: '0.75rem',
+                        background: '#070f1e',
+                        border: '1px solid #378add',
+                        borderRadius: '8px',
+                        padding: '0.75rem 1rem',
+                      }}>
+                        <div style={{ fontSize: '0.7rem', color: '#378add', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem', fontWeight: '600' }}>
+                          🤖 Analisis IA
+                        </div>
+                        <div style={{ fontSize: '0.85rem', color: '#e8eef8', lineHeight: '1.5', marginBottom: aiAlerts[i].aiFix ? '0.5rem' : 0 }}>
+                          {aiAlerts[i].aiExplanation}
+                        </div>
+                        {aiAlerts[i].aiFix && (
+                          <div style={{ fontSize: '0.85rem', color: '#5dcaa5', lineHeight: '1.5' }}>
+                            <strong>Solucion:</strong> {aiAlerts[i].aiFix}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
