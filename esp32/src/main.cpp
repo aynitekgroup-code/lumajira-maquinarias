@@ -9,8 +9,8 @@
 // ============================================================
 const char* WIFI_SSID     = "Josepro";
 const char* WIFI_PASSWORD = "12345678";
-const char* FIREBASE_HOST = "lumajiramaquinarias-9f2d4-default-rtdb.firebaseio.com";
-const char* FIREBASE_API_KEY = "AIzaSyAcy7oZip5edaB1gnX6WrB4_d65BbXpvi4";
+const char* FIREBASE_HOST = "lumajiramaquinarias-d273c-default-rtdb.firebaseio.com";
+const char* FIREBASE_API_KEY = "AIzaSyDNe1rXfCbN8VoBiomBTYrAj8cCxLoIB94";
 const char* MACHINE_ID = "t6WfDV4dLfcg91PkdmXwTblkbLl1";
 
 // ============================================================
