@@ -4,7 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 
 export default function AuthPage() {
   const [mode, setMode] = useState('login');
-  const [form, setForm] = useState({ name: '', company: '', email: '', password: '' });
+  const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login, register } = useAuth();
@@ -18,7 +18,7 @@ export default function AuthPage() {
     setLoading(true);
     try {
       if (mode === 'register') {
-        await register(form.name, form.company, form.email, form.password);
+        await register(form.name, form.email, form.password);
       } else {
         await login(form.email, form.password);
       }
@@ -102,10 +102,6 @@ export default function AuthPage() {
               <div>
                 <label style={labelStyle}>Nombre completo</label>
                 <input name="name" value={form.name} onChange={handleChange} required placeholder="José Llanos" style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Empresa</label>
-                <input name="company" value={form.company} onChange={handleChange} required placeholder="Lumajira Maquinarias" style={inputStyle} />
               </div>
             </>
           )}

@@ -102,7 +102,6 @@ export default function Dashboard() {
     const docRef = await addDoc(collection(db, 'machines'), {
       name: newMachineName.trim(),
       ownerId: user.uid,
-      company: userData?.company || '',
       createdAt: new Date().toISOString(),
       sensors: [{ type: 'SCT-013', name: 'Corriente Resistencias Banda', unit: 'A' }],
     });
@@ -149,7 +148,7 @@ export default function Dashboard() {
           <span style={{ fontSize: '1.3rem' }}>⚙️</span>
           <div>
             <div style={{ fontWeight: '700', fontSize: '1rem', color: '#fff' }}>Lumajira Maquinarias</div>
-            <div style={{ fontSize: '0.75rem', color: '#5a8fc4' }}>{userData?.company || ''}</div>
+            <div style={{ fontSize: '0.75rem', color: '#5a8fc4' }}>Sistema de Monitoreo Industrial</div>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>

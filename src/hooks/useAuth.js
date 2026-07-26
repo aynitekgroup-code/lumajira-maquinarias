@@ -31,17 +31,16 @@ export function AuthProvider({ children }) {
     return unsub;
   }, []);
 
-  async function register(name, company, email, password) {
+  async function register(name, email, password) {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     await updateProfile(cred.user, { displayName: name });
     await setDoc(doc(db, 'users', cred.user.uid), {
       name,
-      company,
       email,
       createdAt: new Date().toISOString(),
       role: 'operator',
     });
-    setUserData({ name, company, email });
+    setUserData({ name, email });
   }
 
   async function login(email, password) {
