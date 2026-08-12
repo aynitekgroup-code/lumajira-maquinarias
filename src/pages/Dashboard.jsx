@@ -27,7 +27,6 @@ export default function Dashboard() {
   const [aiLoading, setAiLoading] = useState({});
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [machineImage, setMachineImage] = useState(null);
   const [lastAlertSent, setLastAlertSent] = useState('');
 
   useEffect(() => {
@@ -115,7 +114,7 @@ export default function Dashboard() {
       unsubCurrent();
       unsubTemp();
     };
-  }, [selectedMachine, user]);
+  }, [selectedMachine, user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadMachines() {
     if (!user) return;
