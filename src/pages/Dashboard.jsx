@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ref, onValue } from 'firebase/database';
-import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, updateDoc, doc } from 'firebase/firestore';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { useAuth } from '../hooks/useAuth';
-import { rtdb, db } from '../firebase/config';
+import { rtdb, db, storage } from '../firebase/config';
 import { analyzeCurrentReading, analyzeTemperatureReading, predictiveMaintenance, getSmartAlert } from '../utils/alerts';
+import { requestNotificationPermission, onMessageListener, disableNotifications } from '../utils/notifications';
 import { format } from 'date-fns';
 import ControlPanel from '../components/ControlPanel';
 
@@ -23,6 +25,22 @@ export default function Dashboard() {
   const [tempStatus, setTempStatus] = useState(null);
   const [aiAlerts, setAiAlerts] = useState({});
   const [aiLoading, setAiLoading] = useState({});
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [machineImage, setMachineImage] = useState(null);
+  const [lastAlertSent, setLastAlertSent] = useState('');
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = onMessageListener();
+    return () => {
+      if (typeof unsub === 'function') unsub();
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (userData?.notificationsEnabled) setNotificationsEnabled(true);
+  }, [userData]);
 
   useEffect(() => {
     loadMachines();
@@ -54,6 +72,17 @@ export default function Dashboard() {
         const allAlerts = [status.level !== 'normal' ? status : null, ...(predictive || [])]
           .filter(Boolean);
         setAlerts(allAlerts);
+
+        // Send push notification on critical alerts
+        if (status.level === 'critical' && notificationsEnabled && latest.timestamp && lastAlertSent !== latest.timestamp) {
+          setLastAlertSent(latest.timestamp);
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification(`Alerta: ${status.message}`, {
+              body: status.maintenance || 'Revisa la maquina de inyeccion',
+              icon: '/team.png.png',
+            });
+          }
+        }
       }
     });
 
@@ -117,6 +146,46 @@ export default function Dashboard() {
     navigate('/login');
   }
 
+  async function handleNotificationToggle() {
+    if (!user) return;
+    if (notificationsEnabled) {
+      await disableNotifications(user);
+      setNotificationsEnabled(false);
+    } else {
+      const token = await requestNotificationPermission(user);
+      if (token) setNotificationsEnabled(true);
+    }
+  }
+
+  async function handleImageUpload(e) {
+    const file = e.target.files[0];
+    if (!file || !selectedMachine) return;
+    if (!file.type.startsWith('image/')) {
+      alert('Solo se permiten imagenes (jpg, png, etc.)');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      alert('La imagen no debe superar 5MB');
+      return;
+    }
+    setUploadingImage(true);
+    try {
+      const ext = file.name.split('.').pop();
+      const imgRef = storageRef(storage, `machines/${selectedMachine.id}/photo.${ext}`);
+      await uploadBytes(imgRef, file);
+      const url = await getDownloadURL(imgRef);
+      await updateDoc(doc(db, 'machines', selectedMachine.id), { imageUrl: url });
+      setSelectedMachine((prev) => ({ ...prev, imageUrl: url }));
+      setMachines((prev) =>
+        prev.map((m) => (m.id === selectedMachine.id ? { ...m, imageUrl: url } : m))
+      );
+    } catch (err) {
+      console.error('Error subiendo imagen:', err);
+      alert('Error al subir la imagen. Intenta de nuevo.');
+    }
+    setUploadingImage(false);
+  }
+
   async function handleGetAIRecommendation(alert, index) {
     setAiLoading((prev) => ({ ...prev, [index]: true }));
     const latestTemp = tempReadings.length > 0 ? tempReadings[tempReadings.length - 1].value : null;
@@ -153,6 +222,17 @@ export default function Dashboard() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <span style={{ fontSize: '0.85rem', color: '#5a8fc4' }}>👤 {userData?.name || user?.displayName}</span>
+          <button onClick={handleNotificationToggle} style={{
+            background: notificationsEnabled ? '#0f6e56' : 'transparent',
+            border: `1px solid ${notificationsEnabled ? '#0f6e56' : '#1d4e8f'}`,
+            borderRadius: '8px',
+            color: notificationsEnabled ? '#fff' : '#5a8fc4',
+            padding: '0.4rem 0.9rem',
+            cursor: 'pointer',
+            fontSize: '0.85rem',
+          }}>
+            {notificationsEnabled ? '🔔 Activadas' : '🔕 Activar alertas'}
+          </button>
           <button onClick={handleLogout} style={{
             background: 'transparent',
             border: '1px solid #1d4e8f',
@@ -184,7 +264,11 @@ export default function Dashboard() {
                 fontSize: '0.9rem',
               }}
             >
-              🏭 {m.name}
+              {m.imageUrl ? (
+                <img src={m.imageUrl} alt={m.name} style={{
+                  width: '28px', height: '28px', borderRadius: '6px', objectFit: 'cover', marginRight: '6px', verticalAlign: 'middle',
+                }} />
+              ) : '🏭'} {m.name}
             </button>
           ))}
           <button
@@ -213,6 +297,7 @@ export default function Dashboard() {
             display: 'flex',
             gap: '1rem',
             alignItems: 'center',
+            flexWrap: 'wrap',
           }}>
             <input
               value={newMachineName}
@@ -221,6 +306,7 @@ export default function Dashboard() {
               onKeyDown={(e) => e.key === 'Enter' && addMachine()}
               style={{
                 flex: 1,
+                minWidth: '200px',
                 background: '#070f1e',
                 border: '1px solid #1d4e8f',
                 borderRadius: '8px',
@@ -230,6 +316,24 @@ export default function Dashboard() {
                 outline: 'none',
               }}
             />
+            <label style={{
+              background: 'transparent',
+              border: '1px dashed #1d4e8f',
+              borderRadius: '8px',
+              color: '#5a8fc4',
+              padding: '0.6rem 1rem',
+              cursor: 'pointer',
+              fontSize: '0.85rem',
+              whiteSpace: 'nowrap',
+            }}>
+              📷 Subir imagen
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                style={{ display: 'none' }}
+              />
+            </label>
             <button onClick={addMachine} style={{
               background: '#1d4e8f',
               border: 'none',
@@ -239,7 +343,7 @@ export default function Dashboard() {
               cursor: 'pointer',
               fontWeight: '600',
             }}>
-              Guardar
+              {uploadingImage ? 'Subiendo...' : 'Guardar'}
             </button>
           </div>
         )}
@@ -260,6 +364,78 @@ export default function Dashboard() {
 
         {selectedMachine && (
           <>
+            <div style={{
+              background: '#0a1628',
+              border: '1px solid #1d4e8f',
+              borderRadius: '16px',
+              padding: '1.25rem',
+              marginBottom: '1.5rem',
+              display: 'flex',
+              gap: '1.25rem',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+            }}>
+              {selectedMachine.imageUrl ? (
+                <img
+                  src={selectedMachine.imageUrl}
+                  alt={selectedMachine.name}
+                  style={{
+                    width: '100px',
+                    height: '100px',
+                    borderRadius: '12px',
+                    objectFit: 'cover',
+                    border: '2px solid #1d4e8f',
+                  }}
+                />
+              ) : (
+                <div style={{
+                  width: '100px',
+                  height: '100px',
+                  borderRadius: '12px',
+                  background: '#070f1e',
+                  border: '2px dashed #1d4e8f',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '2.5rem',
+                  color: '#5a8fc4',
+                }}>
+                  🏭
+                </div>
+              )}
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '0.75rem', color: '#5a8fc4', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Máquina seleccionada
+                </div>
+                <div style={{ fontSize: '1.4rem', fontWeight: '700', color: '#fff', marginTop: '0.25rem' }}>
+                  {selectedMachine.name}
+                </div>
+                {selectedMachine.imageUrl && (
+                  <div style={{ fontSize: '0.8rem', color: '#5dcaa5', marginTop: '0.5rem' }}>
+                    ✓ Imagen de la máquina
+                  </div>
+                )}
+              </div>
+              <label style={{
+                background: 'transparent',
+                border: '1px solid #1d4e8f',
+                borderRadius: '8px',
+                color: '#5a8fc4',
+                padding: '0.5rem 1rem',
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                whiteSpace: 'nowrap',
+              }}>
+                {uploadingImage ? 'Subiendo...' : '📷 Cambiar imagen'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  style={{ display: 'none' }}
+                />
+              </label>
+            </div>
+
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
               <MetricCard
                 label="Corriente SCT-013"

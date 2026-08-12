@@ -13,5 +13,19 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Register Firebase messaging service worker
+      if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/firebase-messaging-sw.js')
+            .then(function (registration) {
+              console.log('Service Worker registrado:', registration.scope);
+            })
+            .catch(function (err) {
+              console.log('Service Worker registration failed:', err);
+            });
+        });
+      }
+    </script>
   </body>
 </html>
