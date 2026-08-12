@@ -31,8 +31,8 @@ export async function getAIRecommendation(alertData) {
       headers: {
         'Authorization': `Bearer ${API_KEY}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://lumajiramaquinarias.vercel.app',
-        'X-Title': 'Lumajira Maquinarias',
+        'HTTP-Referer': 'https://lumacontrol.vercel.app',
+        'X-Title': 'LumaControl',
       },
       body: JSON.stringify({
         model: MODEL,

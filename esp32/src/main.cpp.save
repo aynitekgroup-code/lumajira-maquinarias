@@ -328,7 +328,7 @@ Firebase.begin(&fbConfig, &fbAuth);
     Serial.println(firebaseReady ? "Firebase OK" : "Firebase FALLO");
     if (firebaseReady) setupFirebaseStream();
     lastPidTime = millis();
-    Serial.println("=== LUMAJIRA Machine v3.0 ===");
+    Serial.println("=== LUMACONTROL Machine v3.0 ===");
 }
 
 void loop() {

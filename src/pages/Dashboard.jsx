@@ -147,7 +147,7 @@ export default function Dashboard() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <span style={{ fontSize: '1.3rem' }}>⚙️</span>
           <div>
-            <div style={{ fontWeight: '700', fontSize: '1rem', color: '#fff' }}>Lumajira Maquinarias</div>
+            <div style={{ fontWeight: '700', fontSize: '1rem', color: '#fff' }}>LumaControl</div>
             <div style={{ fontSize: '0.75rem', color: '#5a8fc4' }}>Sistema de Monitoreo Industrial</div>
           </div>
         </div>

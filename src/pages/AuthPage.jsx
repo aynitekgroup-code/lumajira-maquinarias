@@ -66,7 +66,7 @@ export default function AuthPage() {
             fontSize: '1.5rem',
           }}>⚙️</div>
           <h1 style={{ color: '#fff', fontSize: '1.5rem', fontWeight: '700', margin: 0 }}>
-            Lumajira Maquinarias
+            LumaControl
           </h1>
           <p style={{ color: '#5a8fc4', fontSize: '0.875rem', marginTop: '0.25rem' }}>
             {mode === 'login' ? 'Inicia sesión para continuar' : 'Crea tu cuenta'}

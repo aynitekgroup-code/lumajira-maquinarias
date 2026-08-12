@@ -436,7 +436,7 @@ void setup() {
     if (firebaseReady) setupFirebaseStream();
 
     lastPidTime = millis();
-    Serial.println("=== LUMAJIRA Machine v3.0 ===");
+    Serial.println("=== LUMACONTROL Machine v3.0 ===");
     Serial.println("Motores listos. Comandos seriales:");
     Serial.println("  T1 = test motor inyeccion");
     Serial.println("  T2 = test motor rotacion");

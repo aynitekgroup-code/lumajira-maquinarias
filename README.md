@@ -1,11 +1,11 @@
-# Lumajira Maquinarias — Sistema de Monitoreo y Control Industrial
+# LumaControl — Sistema de Monitoreo y Control Industrial
 
 Sistema para monitorear y controlar máquinas de inyección en tiempo real usando ESP32 + Firebase + React.
 
 ## 📁 Estructura del proyecto
 
 ```
-lumajira/
+lumacontrol/
 ├── src/                    ← App React (web)
 │   ├── firebase/config.js  ← Configuración Firebase
 │   ├── hooks/useAuth.js    ← Auth con Firebase

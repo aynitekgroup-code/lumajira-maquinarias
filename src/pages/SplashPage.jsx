@@ -22,7 +22,7 @@ export default function SplashPage() {
     }}>
       <img
         src="/team.png.png"
-        alt="Equipo Lumajira Maquinarias"
+        alt="Equipo LumaControl"
         style={{
           width: '100%',
           maxWidth: '480px',
@@ -40,7 +40,7 @@ export default function SplashPage() {
           letterSpacing: '-0.02em',
           margin: '0 0 0.5rem',
         }}>
-          Lumajira Maquinarias
+          LumaControl
         </h1>
         <div style={{
           width: '60px',
@@ -55,7 +55,7 @@ export default function SplashPage() {
           fontSize: '0.95rem',
           lineHeight: '1.7',
         }}>
-          Lumajira Maquinarias desarrolla soluciones de Inteligencia Artificial para automatizar maquinas industriales. Comenzamos con maquinas de inyeccion de plastico inteligentes, integrando IA, IoT y analisis de datos para optimizar la produccion, reducir tiempos de inactividad y predecir fallas.
+          LumaControl desarrolla soluciones de Inteligencia Artificial para automatizar maquinas industriales. Comenzamos con maquinas de inyeccion de plastico inteligentes, integrando IA, IoT y analisis de datos para optimizar la produccion, reducir tiempos de inactividad y predecir fallas.
         </p>
         <p style={{
           color: '#5a8fc4',
