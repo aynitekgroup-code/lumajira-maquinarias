@@ -1,0 +1,19 @@
+{
+  "_comment": "Descarga este archivo desde Firebase Console > Configuracion del proyecto > Tus apps > Android > google-services.json",
+  "_instructions": "Renombra a google-services.json y colocalo en android/app/",
+  "project_info": {
+    "project_number": "TU_PROJECT_NUMBER",
+    "project_id": "lumajiramaquinarias-d273c",
+    "storage_bucket": "lumajiramaquinarias-d273c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:XXXX:android:XXXX",
+        "android_client_info": {
+          "package_name": "com.lumajira.lumacontrol"
+        }
+      }
+    }
+  ]
+}

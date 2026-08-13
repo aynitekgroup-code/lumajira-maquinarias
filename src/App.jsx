@@ -1,7 +1,9 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { ToastProvider } from './components/ui/Toast';
 import { LoadingScreen } from './components/DashboardSkeleton';
+import { initNativeUI } from './utils/native';
 import SplashPage from './pages/SplashPage';
 import AuthPage from './pages/AuthPage';
 import Dashboard from './pages/Dashboard';
@@ -13,6 +15,10 @@ function PrivateRoute({ children }) {
 }
 
 export default function App() {
+  useEffect(() => {
+    initNativeUI();
+  }, []);
+
   return (
     <ToastProvider>
       <AuthProvider>
