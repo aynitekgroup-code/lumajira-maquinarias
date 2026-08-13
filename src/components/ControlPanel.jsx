@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { ref, push, onValue } from 'firebase/database';
 import { rtdb } from '../firebase/config';
 
-export default function ControlPanel({ machineId }) {
+export default function ControlPanel({ rtdbId }) {
   const [targetTemp, setTargetTemp] = useState(220);
   const [injectionSpeed, setInjectionSpeed] = useState(50);
   const [rotationSpeed, setRotationSpeed] = useState(30);
@@ -12,8 +12,8 @@ export default function ControlPanel({ machineId }) {
   const [lastCommand, setLastCommand] = useState('');
 
   useEffect(() => {
-    if (!machineId) return;
-    const statusRef = ref(rtdb, `machines/${machineId}/status`);
+    if (!rtdbId) return;
+    const statusRef = ref(rtdb, `machines/${rtdbId}/status`);
     const unsub = onValue(statusRef, (snap) => {
       const data = snap.val();
       if (data) {
@@ -22,13 +22,13 @@ export default function ControlPanel({ machineId }) {
       }
     });
     return () => unsub();
-  }, [machineId]);
+  }, [rtdbId]);
 
   async function sendCommand(type, params = {}) {
-    if (!machineId || emergencyStop) return;
+    if (!rtdbId || emergencyStop) return;
     setIsSending(true);
     try {
-      const commandsRef = ref(rtdb, `machines/${machineId}/commands`);
+      const commandsRef = ref(rtdb, `machines/${rtdbId}/commands`);
       await push(commandsRef, {
         type,
         params,

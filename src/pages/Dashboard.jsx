@@ -1,33 +1,53 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ref, onValue } from 'firebase/database';
-import { collection, query, where, getDocs, addDoc, updateDoc, doc } from 'firebase/firestore';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { useAuth } from '../hooks/useAuth';
-import { rtdb, db, storage } from '../firebase/config';
-import { analyzeCurrentReading, analyzeTemperatureReading, predictiveMaintenance, getSmartAlert } from '../utils/alerts';
+import { useMachines } from '../hooks/useMachines';
+import { useSensorData } from '../hooks/useSensorData';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
+import { useToast } from '../components/ui/Toast';
 import { requestNotificationPermission, onMessageListener, disableNotifications } from '../utils/notifications';
-import { format } from 'date-fns';
+import Navbar from '../components/Navbar';
+import MetricCard from '../components/MetricCard';
+import AlertsList from '../components/AlertsList';
+import SensorChart from '../components/SensorChart';
 import ControlPanel from '../components/ControlPanel';
+import DashboardSkeleton from '../components/DashboardSkeleton';
+import MachineSelector, { MachineHeader, EmptyMachines, SensorList } from '../components/MachineSelector';
+import { colors } from '../styles/theme';
 
 export default function Dashboard() {
   const { user, userData, logout } = useAuth();
   const navigate = useNavigate();
-  const [readings, setReadings] = useState([]);
-  const [tempReadings, setTempReadings] = useState([]);
-  const [machines, setMachines] = useState([]);
-  const [selectedMachine, setSelectedMachine] = useState(null);
-  const [showAddMachine, setShowAddMachine] = useState(false);
-  const [newMachineName, setNewMachineName] = useState('');
-  const [alerts, setAlerts] = useState([]);
-  const [currentStatus, setCurrentStatus] = useState(null);
-  const [tempStatus, setTempStatus] = useState(null);
-  const [aiAlerts, setAiAlerts] = useState({});
-  const [aiLoading, setAiLoading] = useState({});
+  const { showToast } = useToast();
+  const online = useOnlineStatus();
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [lastAlertSent, setLastAlertSent] = useState('');
+
+  const {
+    machines,
+    selectedMachine,
+    setSelectedMachine,
+    loading,
+    showAddMachine,
+    setShowAddMachine,
+    newMachineName,
+    setNewMachineName,
+    uploadingImage,
+    addMachine,
+    uploadMachineImage,
+  } = useMachines(user, showToast);
+
+  const rtdbId = selectedMachine?.rtdbId || user?.uid;
+
+  const {
+    readings,
+    tempReadings,
+    alerts,
+    currentStatus,
+    tempStatus,
+    connected,
+    latestReading,
+    latestTemp,
+  } = useSensorData(rtdbId, notificationsEnabled);
 
   useEffect(() => {
     if (!user) return;
@@ -41,105 +61,6 @@ export default function Dashboard() {
     if (userData?.notificationsEnabled) setNotificationsEnabled(true);
   }, [userData]);
 
-  useEffect(() => {
-    loadMachines();
-  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (!selectedMachine || !user) return;
-    
-    // Listen to current sensor
-    const sensorRef = ref(rtdb, `sensors/${user.uid}/sct013`);
-    const unsubCurrent = onValue(sensorRef, (snap) => {
-      const data = snap.val();
-      if (!data) return;
-      const list = Object.entries(data)
-        .map(([k, v]) => ({ id: k, ...v }))
-        .filter((r) => typeof r.timestamp === 'number' && r.timestamp > 0)
-        .sort((a, b) => a.timestamp - b.timestamp)
-        .slice(-60);
-      if (list.length === 0) return;
-      setReadings(list.map((r) => ({
-        time: format(new Date(r.timestamp), 'HH:mm:ss'),
-        value: parseFloat(r.current_a?.toFixed(2) || 0),
-      })));
-      const latest = list[list.length - 1];
-      if (latest) {
-        const status = analyzeCurrentReading(latest.current_a);
-        setCurrentStatus(status);
-        const predictive = predictiveMaintenance(list.map((r) => ({ value: r.current_a })));
-        const allAlerts = [status.level !== 'normal' ? status : null, ...(predictive || [])]
-          .filter(Boolean);
-        setAlerts(allAlerts);
-
-        // Send push notification on critical alerts
-        if (status.level === 'critical' && notificationsEnabled && latest.timestamp && lastAlertSent !== latest.timestamp) {
-          setLastAlertSent(latest.timestamp);
-          if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification(`Alerta: ${status.message}`, {
-              body: status.maintenance || 'Revisa la maquina de inyeccion',
-              icon: '/team.png.png',
-            });
-          }
-        }
-      }
-    });
-
-    // Listen to temperature sensor
-    const tempRef = ref(rtdb, `sensors/${user.uid}/thermistor`);
-    const unsubTemp = onValue(tempRef, (snap) => {
-      const data = snap.val();
-      if (!data) return;
-      const list = Object.entries(data)
-        .map(([k, v]) => ({ id: k, ...v }))
-        .filter((r) => typeof r.timestamp === 'number' && r.timestamp > 0)
-        .sort((a, b) => a.timestamp - b.timestamp)
-        .slice(-60);
-      if (list.length === 0) return;
-      setTempReadings(list.map((r) => ({
-        time: format(new Date(r.timestamp), 'HH:mm:ss'),
-        value: parseFloat(r.temperature_c?.toFixed(1) || 0),
-      })));
-      const latest = list[list.length - 1];
-      if (latest) {
-        const status = analyzeTemperatureReading(latest.temperature_c);
-        setTempStatus(status);
-        if (status.level !== 'normal') {
-          setAlerts((prev) => [...prev, status]);
-        }
-      }
-    });
-
-    return () => {
-      unsubCurrent();
-      unsubTemp();
-    };
-  }, [selectedMachine, user]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function loadMachines() {
-    if (!user) return;
-    const q = query(collection(db, 'machines'), where('ownerId', '==', user.uid));
-    const snap = await getDocs(q);
-    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    setMachines(list);
-    if (list.length > 0 && !selectedMachine) setSelectedMachine(list[0]);
-  }
-
-  async function addMachine() {
-    if (!newMachineName.trim()) return;
-    const docRef = await addDoc(collection(db, 'machines'), {
-      name: newMachineName.trim(),
-      ownerId: user.uid,
-      createdAt: new Date().toISOString(),
-      sensors: [{ type: 'SCT-013', name: 'Corriente Resistencias Banda', unit: 'A' }],
-    });
-    const newM = { id: docRef.id, name: newMachineName.trim() };
-    setMachines((prev) => [...prev, newM]);
-    setSelectedMachine(newM);
-    setNewMachineName('');
-    setShowAddMachine(false);
-  }
-
   async function handleLogout() {
     await logout();
     navigate('/login');
@@ -150,526 +71,154 @@ export default function Dashboard() {
     if (notificationsEnabled) {
       await disableNotifications(user);
       setNotificationsEnabled(false);
+      showToast('Alertas desactivadas', 'info');
     } else {
       const token = await requestNotificationPermission(user);
-      if (token) setNotificationsEnabled(true);
+      if (token) {
+        setNotificationsEnabled(true);
+        showToast('Alertas activadas', 'success');
+      } else {
+        showToast('No se pudieron activar las alertas', 'warning');
+      }
     }
   }
 
-  async function handleImageUpload(e) {
-    const file = e.target.files[0];
-    if (!file || !selectedMachine) return;
-    if (!file.type.startsWith('image/')) {
-      alert('Solo se permiten imagenes (jpg, png, etc.)');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      alert('La imagen no debe superar 5MB');
-      return;
-    }
-    setUploadingImage(true);
-    try {
-      const ext = file.name.split('.').pop();
-      const imgRef = storageRef(storage, `machines/${selectedMachine.id}/photo.${ext}`);
-      await uploadBytes(imgRef, file);
-      const url = await getDownloadURL(imgRef);
-      await updateDoc(doc(db, 'machines', selectedMachine.id), { imageUrl: url });
-      setSelectedMachine((prev) => ({ ...prev, imageUrl: url }));
-      setMachines((prev) =>
-        prev.map((m) => (m.id === selectedMachine.id ? { ...m, imageUrl: url } : m))
-      );
-    } catch (err) {
-      console.error('Error subiendo imagen:', err);
-      alert('Error al subir la imagen. Intenta de nuevo.');
-    }
-    setUploadingImage(false);
+  function handleUpload(file) {
+    if (selectedMachine) uploadMachineImage(file, selectedMachine);
   }
 
-  async function handleGetAIRecommendation(alert, index) {
-    setAiLoading((prev) => ({ ...prev, [index]: true }));
-    const latestTemp = tempReadings.length > 0 ? tempReadings[tempReadings.length - 1].value : null;
-    const latestCurrent = readings.length > 0 ? readings[readings.length - 1].value : null;
-
-    const smartAlert = await getSmartAlert(alert, {
-      currentA: latestCurrent,
-      tempC: latestTemp,
-      machineState: null,
-    });
-
-    setAiAlerts((prev) => ({ ...prev, [index]: smartAlert }));
-    setAiLoading((prev) => ({ ...prev, [index]: false }));
-  }
-
-  const latestReading = readings[readings.length - 1];
+  const statusLabel = currentStatus
+    ? currentStatus.level === 'normal'
+      ? 'NORMAL'
+      : currentStatus.level === 'warning'
+        ? 'ADVERTENCIA'
+        : 'CRITICO'
+    : '—';
 
   return (
-    <div style={{ minHeight: '100vh', background: '#070f1e', color: '#e8eef8' }}>
-      <nav style={{
-        background: '#0a1628',
-        borderBottom: '1px solid #1d4e8f',
-        padding: '1rem 1.5rem',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <span style={{ fontSize: '1.3rem' }}>⚙️</span>
-          <div>
-            <div style={{ fontWeight: '700', fontSize: '1rem', color: '#fff' }}>LumaControl</div>
-            <div style={{ fontSize: '0.75rem', color: '#5a8fc4' }}>Sistema de Monitoreo Industrial</div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <span style={{ fontSize: '0.85rem', color: '#5a8fc4' }}>👤 {userData?.name || user?.displayName}</span>
-          <button onClick={handleNotificationToggle} style={{
-            background: notificationsEnabled ? '#0f6e56' : 'transparent',
-            border: `1px solid ${notificationsEnabled ? '#0f6e56' : '#1d4e8f'}`,
-            borderRadius: '8px',
-            color: notificationsEnabled ? '#fff' : '#5a8fc4',
-            padding: '0.4rem 0.9rem',
-            cursor: 'pointer',
-            fontSize: '0.85rem',
-          }}>
-            {notificationsEnabled ? '🔔 Activadas' : '🔕 Activar alertas'}
-          </button>
-          <button onClick={handleLogout} style={{
-            background: 'transparent',
-            border: '1px solid #1d4e8f',
-            borderRadius: '8px',
-            color: '#5a8fc4',
-            padding: '0.4rem 0.9rem',
-            cursor: 'pointer',
-            fontSize: '0.85rem',
-          }}>
-            Cerrar sesión
-          </button>
-        </div>
-      </nav>
+    <div style={{ minHeight: '100vh', background: colors.bg, color: colors.text }}>
+      <Navbar
+        userName={userData?.name || user?.displayName || 'Operador'}
+        notificationsEnabled={notificationsEnabled}
+        onToggleNotifications={handleNotificationToggle}
+        onLogout={handleLogout}
+        online={online && connected}
+      />
 
-      <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
-        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          {machines.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => setSelectedMachine(m)}
-              style={{
-                background: selectedMachine?.id === m.id ? '#1d4e8f' : '#0a1628',
-                border: `1px solid ${selectedMachine?.id === m.id ? '#378add' : '#1d4e8f'}`,
-                borderRadius: '10px',
-                color: selectedMachine?.id === m.id ? '#fff' : '#5a8fc4',
-                padding: '0.6rem 1.2rem',
-                cursor: 'pointer',
-                fontWeight: '500',
-                fontSize: '0.9rem',
-              }}
-            >
-              {m.imageUrl ? (
-                <img src={m.imageUrl} alt={m.name} style={{
-                  width: '28px', height: '28px', borderRadius: '6px', objectFit: 'cover', marginRight: '6px', verticalAlign: 'middle',
-                }} />
-              ) : '🏭'} {m.name}
-            </button>
-          ))}
-          <button
-            onClick={() => setShowAddMachine(!showAddMachine)}
-            style={{
-              background: 'transparent',
-              border: '1px dashed #1d4e8f',
-              borderRadius: '10px',
-              color: '#5a8fc4',
-              padding: '0.6rem 1.2rem',
-              cursor: 'pointer',
-              fontSize: '0.9rem',
-            }}
-          >
-            + Agregar máquina
-          </button>
+      {!online && (
+        <div style={{
+          background: colors.warningBg,
+          borderBottom: `1px solid ${colors.warningBorder}`,
+          color: colors.warning,
+          textAlign: 'center',
+          padding: '0.5rem',
+          fontSize: '0.85rem',
+        }}>
+          Sin conexion a internet
         </div>
+      )}
 
-        {showAddMachine && (
-          <div style={{
-            background: '#0a1628',
-            border: '1px solid #1d4e8f',
-            borderRadius: '12px',
-            padding: '1.25rem',
-            marginBottom: '1.5rem',
-            display: 'flex',
-            gap: '1rem',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-          }}>
-            <input
-              value={newMachineName}
-              onChange={(e) => setNewMachineName(e.target.value)}
-              placeholder="Nombre de la máquina (ej. Inyectora JM-80)"
-              onKeyDown={(e) => e.key === 'Enter' && addMachine()}
-              style={{
-                flex: 1,
-                minWidth: '200px',
-                background: '#070f1e',
-                border: '1px solid #1d4e8f',
-                borderRadius: '8px',
-                padding: '0.6rem 1rem',
-                color: '#fff',
-                fontSize: '0.95rem',
-                outline: 'none',
-              }}
-            />
-            <label style={{
-              background: 'transparent',
-              border: '1px dashed #1d4e8f',
-              borderRadius: '8px',
-              color: '#5a8fc4',
-              padding: '0.6rem 1rem',
-              cursor: 'pointer',
-              fontSize: '0.85rem',
-              whiteSpace: 'nowrap',
-            }}>
-              📷 Subir imagen
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                style={{ display: 'none' }}
+      {loading ? (
+        <DashboardSkeleton />
+      ) : (
+        <div style={{ padding: '1.5rem', maxWidth: 1200, margin: '0 auto' }}>
+          <MachineSelector
+            machines={machines}
+            selectedMachine={selectedMachine}
+            onSelect={setSelectedMachine}
+            showAddMachine={showAddMachine}
+            onToggleAdd={() => setShowAddMachine(!showAddMachine)}
+            newMachineName={newMachineName}
+            onNameChange={setNewMachineName}
+            onAdd={addMachine}
+            onUploadImage={handleUpload}
+            uploadingImage={uploadingImage}
+          />
+
+          {machines.length === 0 && (
+            <EmptyMachines onAdd={() => setShowAddMachine(true)} />
+          )}
+
+          {selectedMachine && (
+            <>
+              <MachineHeader
+                machine={selectedMachine}
+                onUploadImage={handleUpload}
+                uploadingImage={uploadingImage}
               />
-            </label>
-            <button onClick={addMachine} style={{
-              background: '#1d4e8f',
-              border: 'none',
-              borderRadius: '8px',
-              color: '#fff',
-              padding: '0.6rem 1.2rem',
-              cursor: 'pointer',
-              fontWeight: '600',
-            }}>
-              {uploadingImage ? 'Subiendo...' : 'Guardar'}
-            </button>
-          </div>
-        )}
 
-        {machines.length === 0 && (
-          <div style={{
-            background: '#0a1628',
-            border: '1px solid #1d4e8f',
-            borderRadius: '16px',
-            padding: '3rem',
-            textAlign: 'center',
-          }}>
-            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🏭</div>
-            <h2 style={{ color: '#fff', marginBottom: '0.5rem' }}>No hay máquinas registradas</h2>
-            <p style={{ color: '#5a8fc4' }}>Agrega tu primera máquina de inyección para comenzar el monitoreo.</p>
-          </div>
-        )}
-
-        {selectedMachine && (
-          <>
-            <div style={{
-              background: '#0a1628',
-              border: '1px solid #1d4e8f',
-              borderRadius: '16px',
-              padding: '1.25rem',
-              marginBottom: '1.5rem',
-              display: 'flex',
-              gap: '1.25rem',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-            }}>
-              {selectedMachine.imageUrl ? (
-                <img
-                  src={selectedMachine.imageUrl}
-                  alt={selectedMachine.name}
-                  style={{
-                    width: '100px',
-                    height: '100px',
-                    borderRadius: '12px',
-                    objectFit: 'cover',
-                    border: '2px solid #1d4e8f',
-                  }}
-                />
-              ) : (
-                <div style={{
-                  width: '100px',
-                  height: '100px',
-                  borderRadius: '12px',
-                  background: '#070f1e',
-                  border: '2px dashed #1d4e8f',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '2.5rem',
-                  color: '#5a8fc4',
-                }}>
-                  🏭
-                </div>
-              )}
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '0.75rem', color: '#5a8fc4', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Máquina seleccionada
-                </div>
-                <div style={{ fontSize: '1.4rem', fontWeight: '700', color: '#fff', marginTop: '0.25rem' }}>
-                  {selectedMachine.name}
-                </div>
-                {selectedMachine.imageUrl && (
-                  <div style={{ fontSize: '0.8rem', color: '#5dcaa5', marginTop: '0.5rem' }}>
-                    ✓ Imagen de la máquina
-                  </div>
-                )}
-              </div>
-              <label style={{
-                background: 'transparent',
-                border: '1px solid #1d4e8f',
-                borderRadius: '8px',
-                color: '#5a8fc4',
-                padding: '0.5rem 1rem',
-                cursor: 'pointer',
-                fontSize: '0.85rem',
-                whiteSpace: 'nowrap',
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: '1rem',
+                marginBottom: '1.5rem',
               }}>
-                {uploadingImage ? 'Subiendo...' : '📷 Cambiar imagen'}
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  style={{ display: 'none' }}
+                <MetricCard
+                  label="Corriente SCT-013"
+                  value={latestReading ? `${latestReading.value} A` : '— A'}
+                  sub="Resistencias de banda"
+                  status={currentStatus?.level}
                 />
-              </label>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-              <MetricCard
-                label="Corriente SCT-013"
-                value={latestReading ? `${latestReading.value} A` : '— A'}
-                sub="Resistencias de banda"
-                status={currentStatus?.level}
-              />
-              <MetricCard
-                label="Temperatura"
-                value={tempReadings.length > 0 ? `${tempReadings[tempReadings.length - 1].value}°C` : '— °C'}
-                sub="Termistor NTC-10K"
-                status={tempStatus?.level}
-              />
-              <MetricCard
-                label="Estado"
-                value={currentStatus ? (currentStatus.level === 'normal' ? 'NORMAL' : currentStatus.level === 'warning' ? 'ADVERTENCIA' : 'CRÍTICO') : '—'}
-                sub="Resistencias de banda"
-                status={currentStatus?.level}
-              />
-              <MetricCard
-                label="Alertas activas"
-                value={alerts.length}
-                sub="Mantenimiento predictivo"
-                status={alerts.length > 0 ? 'warning' : 'normal'}
-              />
-            </div>
-
-            {alerts.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
-                {alerts.map((a, i) => (
-                  <div key={i} style={{
-                    background: a.level === 'critical' ? '#2a0a0a' : '#1a1500',
-                    border: `1px solid ${a.level === 'critical' ? '#7a2020' : '#6b5500'}`,
-                    borderRadius: '12px',
-                    padding: '1rem 1.25rem',
-                  }}>
-                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-                      <span style={{ fontSize: '1.3rem' }}>{a.level === 'critical' ? '🚨' : '⚠️'}</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: '600', color: a.level === 'critical' ? '#f09595' : '#fac775', marginBottom: '0.2rem' }}>
-                          {a.message}
-                        </div>
-                        {a.maintenance && (
-                          <div style={{ fontSize: '0.875rem', color: a.level === 'critical' ? '#e24b4a88' : '#ba751788' }}>
-                            🔧 {a.maintenance}
-                          </div>
-                        )}
-                      </div>
-                      {!aiAlerts[i] && (
-                        <button
-                          onClick={() => handleGetAIRecommendation(a, i)}
-                          disabled={aiLoading[i]}
-                          style={{
-                            background: '#1d4e8f',
-                            border: 'none',
-                            borderRadius: '8px',
-                            color: '#fff',
-                            padding: '0.4rem 0.8rem',
-                            cursor: aiLoading[i] ? 'wait' : 'pointer',
-                            fontSize: '0.75rem',
-                            fontWeight: '600',
-                            whiteSpace: 'nowrap',
-                            opacity: aiLoading[i] ? 0.6 : 1,
-                          }}
-                        >
-                          {aiLoading[i] ? '⏳ Analizando...' : '🤖 Explicar con IA'}
-                        </button>
-                      )}
-                    </div>
-
-                    {aiAlerts[i] && (
-                      <div style={{
-                        marginTop: '0.75rem',
-                        background: '#070f1e',
-                        border: '1px solid #378add',
-                        borderRadius: '8px',
-                        padding: '0.75rem 1rem',
-                      }}>
-                        <div style={{ fontSize: '0.7rem', color: '#378add', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem', fontWeight: '600' }}>
-                          🤖 Analisis IA
-                        </div>
-                        <div style={{ fontSize: '0.85rem', color: '#e8eef8', lineHeight: '1.5', marginBottom: aiAlerts[i].aiFix ? '0.5rem' : 0 }}>
-                          {aiAlerts[i].aiExplanation}
-                        </div>
-                        {aiAlerts[i].aiFix && (
-                          <div style={{ fontSize: '0.85rem', color: '#5dcaa5', lineHeight: '1.5' }}>
-                            <strong>Solucion:</strong> {aiAlerts[i].aiFix}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                <MetricCard
+                  label="Temperatura"
+                  value={latestTemp ? `${latestTemp.value}°C` : '— °C'}
+                  sub="Termistor NTC-10K"
+                  status={tempStatus?.level}
+                />
+                <MetricCard
+                  label="Estado"
+                  value={statusLabel}
+                  sub="Resistencias de banda"
+                  status={currentStatus?.level}
+                />
+                <MetricCard
+                  label="Alertas activas"
+                  value={alerts.length}
+                  sub="Mantenimiento predictivo"
+                  status={alerts.length > 0 ? 'warning' : 'normal'}
+                />
               </div>
-            )}
 
-            {/* Control Panel */}
-            <ControlPanel machineId={user?.uid} />
+              <AlertsList
+                alerts={alerts}
+                latestCurrent={latestReading?.value}
+                latestTemp={latestTemp?.value}
+              />
 
-            <div style={{
-              background: '#0a1628',
-              border: '1px solid #1d4e8f',
-              borderRadius: '16px',
-              padding: '1.5rem',
-              marginBottom: '1.5rem',
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-                <h2 style={{ color: '#fff', margin: 0, fontSize: '1rem', fontWeight: '600' }}>
-                  📈 Corriente en tiempo real — SCT-013
-                </h2>
-                <span style={{ fontSize: '0.8rem', color: '#5a8fc4' }}>Resistencias de banda · {selectedMachine.name}</span>
-              </div>
-              {readings.length > 0 ? (
-                <ResponsiveContainer width="100%" height={280}>
-                  <LineChart data={readings} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1d4e8f44" />
-                    <XAxis dataKey="time" tick={{ fill: '#5a8fc4', fontSize: 11 }} interval="preserveStartEnd" />
-                    <YAxis tick={{ fill: '#5a8fc4', fontSize: 11 }} unit="A" domain={[0, 'auto']} />
-                    <Tooltip
-                      contentStyle={{ background: '#0a1628', border: '1px solid #1d4e8f', borderRadius: '8px', color: '#e8eef8' }}
-                      formatter={(v) => [`${v} A`, 'Corriente']}
-                    />
-                    <ReferenceLine y={8} stroke="#ba7517" strokeDasharray="4 4" label={{ value: 'Advertencia 8A', fill: '#ba7517', fontSize: 11 }} />
-                    <ReferenceLine y={10} stroke="#e24b4a" strokeDasharray="4 4" label={{ value: 'Crítico 10A', fill: '#e24b4a', fontSize: 11 }} />
-                    <Line type="monotone" dataKey="value" stroke="#378add" strokeWidth={2} dot={false} activeDot={{ r: 5, fill: '#378add' }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              ) : (
-                <div style={{ height: '280px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5a8fc4' }}>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📡</div>
-                    <p>Esperando datos del ESP32...</p>
-                    <p style={{ fontSize: '0.8rem', opacity: 0.7 }}>Asegúrate que el ESP32 esté conectado y enviando datos.</p>
-                  </div>
-                </div>
-              )}
-            </div>
+              <ControlPanel rtdbId={rtdbId} />
 
-            {/* Temperature Chart */}
-            <div style={{
-              background: '#0a1628',
-              border: '1px solid #1d4e8f',
-              borderRadius: '16px',
-              padding: '1.5rem',
-              marginBottom: '1.5rem',
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-                <h2 style={{ color: '#fff', margin: 0, fontSize: '1rem', fontWeight: '600' }}>
-                  🌡️ Temperatura en tiempo real — NTC-10K
-                </h2>
-                <span style={{ fontSize: '0.8rem', color: '#5a8fc4' }}>Termistor · {selectedMachine.name}</span>
-              </div>
-              {tempReadings.length > 0 ? (
-                <ResponsiveContainer width="100%" height={280}>
-                  <LineChart data={tempReadings} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1d4e8f44" />
-                    <XAxis dataKey="time" tick={{ fill: '#5a8fc4', fontSize: 11 }} interval="preserveStartEnd" />
-                    <YAxis tick={{ fill: '#5a8fc4', fontSize: 11 }} unit="°C" domain={[0, 300]} />
-                    <Tooltip
-                      contentStyle={{ background: '#0a1628', border: '1px solid #1d4e8f', borderRadius: '8px', color: '#e8eef8' }}
-                      formatter={(v) => [`${v}°C`, 'Temperatura']}
-                    />
-                    <ReferenceLine y={240} stroke="#ba7517" strokeDasharray="4 4" label={{ value: 'Advertencia 240°C', fill: '#ba7517', fontSize: 11 }} />
-                    <ReferenceLine y={260} stroke="#e24b4a" strokeDasharray="4 4" label={{ value: 'Crítico 260°C', fill: '#e24b4a', fontSize: 11 }} />
-                    <Line type="monotone" dataKey="value" stroke="#ef9f27" strokeWidth={2} dot={false} activeDot={{ r: 5, fill: '#ef9f27' }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              ) : (
-                <div style={{ height: '280px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5a8fc4' }}>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🌡️</div>
-                    <p>Esperando datos de temperatura del ESP32...</p>
-                    <p style={{ fontSize: '0.8rem', opacity: 0.7 }}>Asegúrate que el termistor esté conectado.</p>
-                  </div>
-                </div>
-              )}
-            </div>
+              <SensorChart
+                title="Corriente en tiempo real — SCT-013"
+                subtitle={`Resistencias de banda · ${selectedMachine.name}`}
+                data={readings}
+                unit="A"
+                color={colors.primary}
+                warningLine={{ value: 8, label: 'Advertencia 8A' }}
+                criticalLine={{ value: 10, label: 'Critico 10A' }}
+                emptyIcon="📡"
+                emptyMessage="Esperando datos del ESP32..."
+                emptyHint="Verifica que el ESP32 este conectado y enviando datos."
+              />
 
-            <div style={{
-              background: '#0a1628',
-              border: '1px solid #1d4e8f',
-              borderRadius: '16px',
-              padding: '1.5rem',
-            }}>
-              <h2 style={{ color: '#fff', margin: '0 0 1rem', fontSize: '1rem', fontWeight: '600' }}>
-                🔩 Sensores registrados
-              </h2>
-              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                <SensorCard type="SCT-013" label="Corriente resistencias de banda" unit="A" active />
-                <SensorCard type="NTC-10K" label="Temperatura barril" unit="°C" active />
-                <SensorCard type="+ Agregar" label="Más sensores próximamente" unit="" active={false} />
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
+              <SensorChart
+                title="Temperatura en tiempo real — NTC-10K"
+                subtitle={`Termistor · ${selectedMachine.name}`}
+                data={tempReadings}
+                unit="°C"
+                color={colors.warning}
+                domain={[0, 300]}
+                warningLine={{ value: 240, label: 'Advertencia 240°C' }}
+                criticalLine={{ value: 260, label: 'Critico 260°C' }}
+                emptyIcon="🌡"
+                emptyMessage="Esperando datos de temperatura..."
+                emptyHint="Verifica que el termistor este conectado."
+              />
 
-function MetricCard({ label, value, sub, status }) {
-  const colors = {
-    normal: { bg: '#071a12', border: '#0f6e56', text: '#5dcaa5' },
-    warning: { bg: '#1a1200', border: '#854f0b', text: '#ef9f27' },
-    critical: { bg: '#1a0707', border: '#a32d2d', text: '#f09595' },
-    default: { bg: '#0a1628', border: '#1d4e8f', text: '#378add' },
-  };
-  const c = colors[status] || colors.default;
-  return (
-    <div style={{
-      background: c.bg,
-      border: `1px solid ${c.border}`,
-      borderRadius: '12px',
-      padding: '1.25rem',
-    }}>
-      <div style={{ fontSize: '0.75rem', color: '#5a8fc4', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>{label}</div>
-      <div style={{ fontSize: '1.75rem', fontWeight: '700', color: c.text, lineHeight: 1 }}>{value}</div>
-      <div style={{ fontSize: '0.8rem', color: '#5a8fc444', marginTop: '0.4rem' }}>{sub}</div>
-    </div>
-  );
-}
-
-function SensorCard({ type, label, unit, active }) {
-  return (
-    <div style={{
-      background: active ? '#071228' : '#0a1628',
-      border: `1px solid ${active ? '#378add' : '#1d4e8f44'}`,
-      borderRadius: '10px',
-      padding: '1rem 1.25rem',
-      minWidth: '180px',
-      opacity: active ? 1 : 0.5,
-    }}>
-      <div style={{ fontWeight: '700', color: active ? '#378add' : '#5a8fc4', fontSize: '0.95rem' }}>{type}</div>
-      <div style={{ fontSize: '0.8rem', color: '#5a8fc4', marginTop: '0.25rem' }}>{label}</div>
-      {unit && <div style={{ fontSize: '0.75rem', color: '#1d4e8f', marginTop: '0.25rem' }}>Unidad: {unit}</div>}
+              <SensorList />
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
