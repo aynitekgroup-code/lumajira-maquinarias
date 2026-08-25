@@ -10,9 +10,8 @@ import Navbar from '../components/Navbar';
 import MetricCard from '../components/MetricCard';
 import AlertsList from '../components/AlertsList';
 import SensorChart from '../components/SensorChart';
-import ControlPanel from '../components/ControlPanel';
 import DashboardSkeleton from '../components/DashboardSkeleton';
-import MachineSelector, { MachineHeader, EmptyMachines, SensorList } from '../components/MachineSelector';
+import MachineSelector, { MachineHeader, EmptyMachines } from '../components/MachineSelector';
 import { colors } from '../styles/theme';
 
 export default function Dashboard() {
@@ -40,13 +39,10 @@ export default function Dashboard() {
 
   const {
     readings,
-    tempReadings,
     alerts,
     currentStatus,
-    tempStatus,
     connected,
     latestReading,
-    latestTemp,
   } = useSensorData(rtdbId, notificationsEnabled);
 
   useEffect(() => {
@@ -156,19 +152,13 @@ export default function Dashboard() {
                 <MetricCard
                   label="Corriente SCT-013"
                   value={latestReading ? `${latestReading.value} A` : '— A'}
-                  sub="Resistencias de banda"
+                  sub="Sensor de corriente"
                   status={currentStatus?.level}
-                />
-                <MetricCard
-                  label="Temperatura"
-                  value={latestTemp ? `${latestTemp.value}°C` : '— °C'}
-                  sub="Termistor NTC-10K"
-                  status={tempStatus?.level}
                 />
                 <MetricCard
                   label="Estado"
                   value={statusLabel}
-                  sub="Resistencias de banda"
+                  sub="Sistema"
                   status={currentStatus?.level}
                 />
                 <MetricCard
@@ -182,14 +172,11 @@ export default function Dashboard() {
               <AlertsList
                 alerts={alerts}
                 latestCurrent={latestReading?.value}
-                latestTemp={latestTemp?.value}
               />
-
-              <ControlPanel rtdbId={rtdbId} />
 
               <SensorChart
                 title="Corriente en tiempo real — SCT-013"
-                subtitle={`Resistencias de banda · ${selectedMachine.name}`}
+                subtitle={`Sensor de corriente · ${selectedMachine.name}`}
                 data={readings}
                 unit="A"
                 color={colors.primary}
@@ -199,22 +186,6 @@ export default function Dashboard() {
                 emptyMessage="Esperando datos del ESP32..."
                 emptyHint="Verifica que el ESP32 este conectado y enviando datos."
               />
-
-              <SensorChart
-                title="Temperatura en tiempo real — NTC-10K"
-                subtitle={`Termistor · ${selectedMachine.name}`}
-                data={tempReadings}
-                unit="°C"
-                color={colors.warning}
-                domain={[0, 300]}
-                warningLine={{ value: 240, label: 'Advertencia 240°C' }}
-                criticalLine={{ value: 260, label: 'Critico 260°C' }}
-                emptyIcon="🌡"
-                emptyMessage="Esperando datos de temperatura..."
-                emptyHint="Verifica que el termistor este conectado."
-              />
-
-              <SensorList />
             </>
           )}
         </div>

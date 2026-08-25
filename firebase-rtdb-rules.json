@@ -1,22 +1,24 @@
 {
   "rules": {
+    "sensors": {
+      "$machineId": {
+        ".read": true,
+        ".write": true,
+        "sct013": {
+          ".indexOn": ["timestamp"]
+        },
+        "thermistor": {
+          ".indexOn": ["timestamp"]
+        }
+      }
+    },
     "machines": {
       "$machineId": {
-        "sensors": {
-          ".read": true,
-          ".write": true,
-          "sct013": {
-            ".indexOn": ["timestamp"]
-          },
-          "thermistor": {
-            ".indexOn": ["timestamp"]
-          }
-        },
-        "commands": {
+        "status": {
           ".read": true,
           ".write": true
         },
-        "status": {
+        "commands": {
           ".read": true,
           ".write": true
         }

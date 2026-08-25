@@ -1,507 +1,134 @@
 #include <Arduino.h>
 #include <WiFi.h>
-#include <Firebase_ESP_Client.h>
-#include "EmonLib.h"
-#include <math.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
 
-// ============================================================
-// CONFIGURACION
-// ============================================================
-const char* WIFI_SSID     = "Josepro";
-const char* WIFI_PASSWORD = "12345678";
+// ===================== CONFIGURACION =====================
+const char* WIFI_SSID = "Josepro";
+const char* WIFI_PASS = "12345678";
 const char* FIREBASE_HOST = "lumajiramaquinarias-d273c-default-rtdb.firebaseio.com";
-const char* FIREBASE_API_KEY = "AIzaSyDNe1rXfCbN8VoBiomBTYrAj8cCxLoIB94";
-const char* MACHINE_ID = "t6WfDV4dLfcg91PkdmXwTblkbLl1";
+String MACHINE_RTDB_ID = "ecFPpcTf1Rgd5OyC2XSwXyfpFHo2";
 
-// ============================================================
-// PINES — TB6600 + NEMA 23
-// ============================================================
-const int SCT_PIN            = 34;
-const int THERMISTOR_PIN     = 36;
-const int EMERGENCY_STOP_PIN = 27;
+// ===================== PINES =====================
+#define PIN_SCT013 34    // SCT-013-100A 50mA en GPIO 34
 
-// Motor Inyeccion (Motor 1) — TB6600
-const int INJ_STEP_PIN = 12;
-const int INJ_DIR_PIN  = 13;
-const int INJ_ENA_PIN  = 25;
+// ===================== SENSOR =====================
+// SCT-013 100A:50mA
+// Con burden resistor de 100 ohm: 50mA * 100 = 5V pico
+// Con burden resistor de 47 ohm: 50mA * 47 = 2.35V pico
+// Factor de calibracion: ajustar segun tu burden resistor
+const float BURDEN_RESISTANCE = 47.0;  // ohms (ajustar al tuyo)
+const float SENSOR_RATIO = 2000.0;      // 100A / 50mA = 2000
+const float ADC_VOLTAGE = 3.3;          // Voltaje maximo ADC ESP32
+const float ADC_MAX = 4095.0;           // Resolucion ADC
 
-// Motor Rotacion (Motor 2) — TB6600
-const int ROT_STEP_PIN = 14;
-const int ROT_DIR_PIN  = 15;
-const int ROT_ENA_PIN  = 26;
+//muestras para RMS
+const int NUM_SAMPLES = 200;
 
-// Calentador
-const int HEATER_PIN = 32;
-
-// ============================================================
-// CONSTANTES
-// ============================================================
-const float CALIBRATION     = 11.0;
-const float NOISE_THRESHOLD = 0.3;
-const unsigned long SEND_INTERVAL = 2000;
-
-const float THERMISTOR_NOMINAL = 10000.0;
-const float TEMP_NOMINAL       = 25.0;
-const float B_COEFFICIENT      = 3950.0;
-const float SERIES_RESISTOR    = 10000.0;
-
-const float KP = 2.0;
-const float KI = 0.5;
-const float KD = 1.0;
-
-const float MAX_TEMP    = 260.0;
-const float MIN_TEMP    = 100.0;
-const float MAX_CURRENT = 12.0;
-
-// ============================================================
-// OBJETOS GLOBALES
-// ============================================================
-FirebaseData   fbdo;
-FirebaseData   fbdoStream;
-FirebaseAuth   fbAuth;
-FirebaseConfig fbConfig;
-EnergyMonitor  emon1;
-
+// ===================== VARIABLES =====================
+float currentAmps = 0.0;
 unsigned long lastSend = 0;
-bool firebaseReady = false;
 
-float currentTemp  = 0.0;
-float targetTemp   = 0.0;
-float pidOutput    = 0.0;
-float pidError     = 0.0;
-float pidIntegral  = 0.0;
-float pidLastError = 0.0;
-unsigned long lastPidTime = 0;
+// ===================== FUNCIONES =====================
+float readCurrentRMS() {
+    long sumSquares = 0;
+    int validSamples = 0;
 
-enum MachineState { IDLE, HEATING, INJECTING, COOLING, ERROR_STATE };
-MachineState machineState = IDLE;
+    for (int i = 0; i < NUM_SAMPLES; i++) {
+        int adcValue = analogRead(PIN_SCT013);
 
-bool injectionRunning = false;
-bool rotationRunning  = false;
-int  injectionSpeed   = 50;
-int  rotationSpeed    = 30;
-bool injectionDir     = true;
-bool rotationDir      = true;
+        // Convertir ADC a voltaje
+        float voltage = (adcValue / ADC_MAX) * ADC_VOLTAGE;
 
-// Stepper no bloqueante
-unsigned long injStepInterval = 0;
-unsigned long rotStepInterval = 0;
-unsigned long lastInjStep = 0;
-unsigned long lastRotStep = 0;
-int injStepsRemaining = 0;
-int rotStepsRemaining = 0;
+        // Restar offset DC (centro del rango ADC = 1.65V)
+        float voltageAC = voltage - (ADC_VOLTAGE / 2.0);
 
-bool emergencyStopActive = false;
+        sumSquares += voltageAC * voltageAC;
+        validSamples++;
 
-// ============================================================
-// PROTOTIPOS
-// ============================================================
-String machineStateToString();
-void emergencyStop();
-void resetEmergencyStop();
-void connectWiFi();
-void setupFirebaseStream();
-void sendSensorData();
-
-// ============================================================
-// TEMPERATURA
-// ============================================================
-float readThermistor() {
-    int adcValue = analogRead(THERMISTOR_PIN);
-    if (adcValue <= 0) return -999.0;
-    float resistance = SERIES_RESISTOR / ((4095.0 / (float)adcValue) - 1.0);
-    float steinhart = resistance / THERMISTOR_NOMINAL;
-    steinhart = log(steinhart);
-    steinhart /= B_COEFFICIENT;
-    steinhart += 1.0f / (TEMP_NOMINAL + 273.15f);
-    steinhart = 1.0f / steinhart;
-    steinhart -= 273.15f;
-    return steinhart;
-}
-
-// ============================================================
-// PID
-// ============================================================
-float computePID(float current, float target) {
-    unsigned long now = millis();
-    float dt = (now - lastPidTime) / 1000.0f;
-    if (dt <= 0) dt = 0.001f;
-    lastPidTime = now;
-
-    pidError = target - current;
-    pidIntegral += pidError * dt;
-    if (pidIntegral > 255.0f) pidIntegral = 255.0f;
-    if (pidIntegral < 0.0f)   pidIntegral = 0.0f;
-
-    float derivative = (pidError - pidLastError) / dt;
-    pidLastError = pidError;
-
-    float output = KP * pidError + KI * pidIntegral + KD * derivative;
-    if (output > 255.0f) output = 255.0f;
-    if (output < 0.0f)   output = 0.0f;
-    return output;
-}
-
-void setHeaterPower(int power) {
-    analogWrite(HEATER_PIN, (!emergencyStopActive && power > 0) ? power : 0);
-}
-
-// ============================================================
-// MOTORES — No bloqueante con TB6600
-// ============================================================
-void startInjectionNonBlocking(int steps, bool direction, int speed) {
-    if (emergencyStopActive || currentTemp < MIN_TEMP) {
-        Serial.println("Inyeccion bloqueada: emergencia o temp insuficiente");
-        return;
-    }
-    injStepsRemaining = steps;
-    injectionDir = direction;
-    injStepInterval = (speed > 0) ? (1000000UL / (unsigned long)(speed * 10)) : 100000;
-    lastInjStep = micros();
-    injectionRunning = true;
-    machineState = INJECTING;
-    digitalWrite(INJ_DIR_PIN, direction ? HIGH : LOW);
-    digitalWrite(INJ_ENA_PIN, LOW);
-}
-
-void startInjectionTest() {
-    Serial.println("TEST: Motor Inyeccion - 500 pasos adelante");
-    injStepsRemaining = 500;
-    injectionDir = true;
-    injStepInterval = 5000;
-    lastInjStep = micros();
-    injectionRunning = true;
-    machineState = INJECTING;
-    digitalWrite(INJ_DIR_PIN, HIGH);
-    digitalWrite(INJ_ENA_PIN, LOW);
-}
-
-void startRotationNonBlocking(int steps, bool direction, int speed) {
-    if (emergencyStopActive) return;
-    rotStepsRemaining = steps;
-    rotationDir = direction;
-    rotStepInterval = (speed > 0) ? (1000000UL / (unsigned long)(speed * 10)) : 100000;
-    lastRotStep = micros();
-    rotationRunning = true;
-    digitalWrite(ROT_DIR_PIN, direction ? HIGH : LOW);
-    digitalWrite(ROT_ENA_PIN, LOW);
-}
-
-void startRotationTest() {
-    Serial.println("TEST: Motor Rotacion - 500 pasos adelante");
-    rotStepsRemaining = 500;
-    rotationDir = true;
-    rotStepInterval = 5000;
-    lastRotStep = micros();
-    rotationRunning = true;
-    digitalWrite(ROT_DIR_PIN, HIGH);
-    digitalWrite(ROT_ENA_PIN, LOW);
-}
-
-void updateMotors() {
-    unsigned long now = micros();
-
-    if (injStepsRemaining > 0) {
-        if (now - lastInjStep >= injStepInterval) {
-            lastInjStep = now;
-            digitalWrite(INJ_STEP_PIN, HIGH);
-            delayMicroseconds(5);
-            digitalWrite(INJ_STEP_PIN, LOW);
-            injStepsRemaining--;
-        }
-    } else if (injectionRunning) {
-        injectionRunning = false;
-        digitalWrite(INJ_ENA_PIN, HIGH);
-        if (machineState == INJECTING) machineState = IDLE;
-        Serial.println("Inyeccion completada");
+        delayMicroseconds(500);  // ~2kHz sample rate
     }
 
-    if (rotStepsRemaining > 0) {
-        if (now - lastRotStep >= rotStepInterval) {
-            lastRotStep = now;
-            digitalWrite(ROT_STEP_PIN, HIGH);
-            delayMicroseconds(5);
-            digitalWrite(ROT_STEP_PIN, LOW);
-            rotStepsRemaining--;
-        }
-    } else if (rotationRunning) {
-        rotationRunning = false;
-        digitalWrite(ROT_ENA_PIN, HIGH);
-        Serial.println("Rotacion completada");
-    }
+    if (validSamples == 0) return 0.0;
+
+    // Voltaje RMS
+    float rmsVoltage = sqrt(sumSquares / (float)validSamples);
+
+    // Corriente RMS = Voltaje RMS / Burden * Factor sensor
+    float rmsCurrent = (rmsVoltage / BURDEN_RESISTANCE) * SENSOR_RATIO;
+
+    return rmsCurrent;
 }
 
-void stopMotors() {
-    injStepsRemaining = 0;
-    rotStepsRemaining = 0;
-    injectionRunning = false;
-    rotationRunning = false;
-    digitalWrite(INJ_ENA_PIN, HIGH);
-    digitalWrite(ROT_ENA_PIN, HIGH);
-    digitalWrite(INJ_STEP_PIN, LOW);
-    digitalWrite(ROT_STEP_PIN, LOW);
-}
-
-// ============================================================
-// SEGURIDAD
-// ============================================================
-void emergencyStop() {
-    emergencyStopActive = true;
-    machineState = ERROR_STATE;
-    setHeaterPower(0);
-    stopMotors();
-    Serial.println("EMERGENCIA ACTIVA");
-}
-
-void resetEmergencyStop() {
-    emergencyStopActive = false;
-    machineState = IDLE;
-    pidIntegral = 0;
-    pidLastError = 0;
-    Serial.println("Emergencia reseteada");
-}
-
-// ============================================================
-// ESTADO
-// ============================================================
-String machineStateToString() {
-    switch (machineState) {
-        case IDLE:        return "idle";
-        case HEATING:     return "heating";
-        case INJECTING:   return "injecting";
-        case COOLING:     return "cooling";
-        case ERROR_STATE: return "error";
-        default:          return "idle";
-    }
-}
-
-// ============================================================
-// WIFI
-// ============================================================
-void connectWiFi() {
-    WiFi.disconnect(true);
-    delay(500);
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    Serial.printf("Conectando a %s", WIFI_SSID);
-
-    unsigned long t = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - t < 30000) {
-        Serial.print(".");
-        delay(500);
-    }
-    if (WiFi.status() == WL_CONNECTED) {
-        Serial.printf("\nWiFi OK! IP: %s\n", WiFi.localIP().toString().c_str());
-    } else {
-        Serial.println("\nFallo WiFi");
-    }
-}
-
-// ============================================================
-// FIREBASE
-// ============================================================
 void sendSensorData() {
-    String sensorsPath = String("sensors/") + MACHINE_ID;
+    StaticJsonDocument<128> doc;
+    doc["type"] = "sensor_data";
+    doc["current_a"] = round(currentAmps * 100) / 100.0;
+    doc["temperature_c"] = 25.0;
+    doc["timestamp"] = millis();
 
-    double irms = emon1.calcIrms(1480);
-    if (irms < NOISE_THRESHOLD) irms = 0.0;
-
-    FirebaseJson currentJson;
-    currentJson.set("current_a",     irms);
-    currentJson.set("timestamp/.sv", "timestamp");
-    currentJson.set("sensor",        "SCT-013");
-    currentJson.set("unit",          "A");
-    Firebase.RTDB.pushJSON(&fbdo, (sensorsPath + "/sct013").c_str(), &currentJson);
-
-    currentTemp = readThermistor();
-    FirebaseJson tempJson;
-    tempJson.set("temperature_c",  currentTemp);
-    tempJson.set("timestamp/.sv",  "timestamp");
-    tempJson.set("sensor",         "NTC-10K");
-    tempJson.set("unit",           "C");
-    Firebase.RTDB.pushJSON(&fbdo, (sensorsPath + "/thermistor").c_str(), &tempJson);
-
-    String statusPath = String("machines/") + MACHINE_ID + "/status";
-    FirebaseJson statusJson;
-    statusJson.set("state",            machineStateToString());
-    statusJson.set("currentTemp",      currentTemp);
-    statusJson.set("targetTemp",       targetTemp);
-    statusJson.set("injectionSpeed",   injectionSpeed);
-    statusJson.set("rotationSpeed",    rotationSpeed);
-    statusJson.set("emergencyStop",    emergencyStopActive);
-    statusJson.set("injectionRunning", injectionRunning);
-    statusJson.set("rotationRunning",  rotationRunning);
-    statusJson.set("timestamp/.sv",    "timestamp");
-    Firebase.RTDB.setJSON(&fbdo, statusPath.c_str(), &statusJson);
-
-    Serial.printf("Enviado: %.2f A | %.1f C | %s\n",
-                  irms, currentTemp, machineStateToString());
+    serializeJson(doc, Serial);
+    Serial.println();
 }
 
-void streamCallback(StreamData data) {
-    if (data.dataType() != "json") return;
+void uploadToFirebase() {
+    if (WiFi.status() != WL_CONNECTED) return;
 
-    FirebaseJson* json = data.toStreamObject();
-    FirebaseJsonData jsonData;
+    HTTPClient http;
+    int ts = millis();
 
-    json->get(jsonData, "type");
-    String cmd = jsonData.stringValue;
-    Serial.printf("Comando: %s\n", cmd.c_str());
+    // Subir corriente
+    String url1 = "https://" + String(FIREBASE_HOST) + "/sensors/" + MACHINE_RTDB_ID + "/sct013.json";
+    http.begin(url1);
+    http.addHeader("Content-Type", "application/json");
+    String body1 = "{\"current_a\":" + String(currentAmps, 2) + ",\"timestamp\":" + String(ts) + "}";
+    http.POST(body1);
+    http.end();
 
-    if (cmd == "setTemp") {
-        json->get(jsonData, "params/targetTemp");
-        targetTemp = jsonData.floatValue;
-        if (targetTemp > 0 && machineState == IDLE) machineState = HEATING;
-
-    } else if (cmd == "inject") {
-        json->get(jsonData, "params/speed");
-        injectionSpeed = jsonData.intValue;
-        if (injectionSpeed <= 0) injectionSpeed = 50;
-        startInjectionNonBlocking(200, true, injectionSpeed);
-
-    } else if (cmd == "rotate") {
-        json->get(jsonData, "params/speed");
-        rotationSpeed = jsonData.intValue;
-        if (rotationSpeed <= 0) rotationSpeed = 30;
-        startRotationNonBlocking(1000, true, rotationSpeed);
-
-    } else if (cmd == "stop") {
-        stopMotors();
-        machineState = IDLE;
-        setHeaterPower(0);
-
-    } else if (cmd == "emergencyStop") {
-        emergencyStop();
-
-    } else if (cmd == "resetEmergency" || cmd == "emergencyReset") {
-        resetEmergencyStop();
-
-    } else if (cmd == "testMotors") {
-        startInjectionTest();
-        startRotationTest();
-    }
+    // Subir temperatura fija (para que la app no muestre error)
+    String url2 = "https://" + String(FIREBASE_HOST) + "/sensors/" + MACHINE_RTDB_ID + "/thermistor.json";
+    http.begin(url2);
+    http.addHeader("Content-Type", "application/json");
+    String body2 = "{\"temperature_c\":25.0,\"timestamp\":" + String(ts) + "}";
+    http.POST(body2);
+    http.end();
 }
 
-void streamTimeout(bool timeout) {
-    if (timeout) {
-        Serial.println("Stream timeout - reconectando...");
-        Firebase.RTDB.beginStream(&fbdoStream,
-            (String("machines/") + MACHINE_ID + "/commands").c_str());
-    }
-}
-
-void setupFirebaseStream() {
-    String commandPath = String("machines/") + MACHINE_ID + "/commands";
-    Firebase.RTDB.beginStream(&fbdoStream, commandPath.c_str());
-    Firebase.RTDB.setStreamCallback(&fbdoStream, streamCallback, streamTimeout);
-    Firebase.RTDB.setStreamTimeout(&fbdoStream, 1000UL * 60 * 5);
-}
-
-// ============================================================
-// SETUP
-// ============================================================
+// ===================== SETUP =====================
 void setup() {
     Serial.begin(115200);
     delay(1000);
 
-    analogReadResolution(12);
-    analogSetAttenuation(ADC_11db);
+    pinMode(PIN_SCT013, INPUT);
 
-    emon1.current(SCT_PIN, CALIBRATION);
+    Serial.println("{\"type\":\"boot\",\"message\":\"SCT-013 100A listo\"}");
 
-    pinMode(INJ_STEP_PIN, OUTPUT); digitalWrite(INJ_STEP_PIN, LOW);
-    pinMode(INJ_DIR_PIN,  OUTPUT); digitalWrite(INJ_DIR_PIN,  LOW);
-    pinMode(INJ_ENA_PIN,  OUTPUT); digitalWrite(INJ_ENA_PIN,  HIGH);
-    pinMode(ROT_STEP_PIN, OUTPUT); digitalWrite(ROT_STEP_PIN, LOW);
-    pinMode(ROT_DIR_PIN,  OUTPUT); digitalWrite(ROT_DIR_PIN,  LOW);
-    pinMode(ROT_ENA_PIN,  OUTPUT); digitalWrite(ROT_ENA_PIN,  HIGH);
+    // Conectar WiFi
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
+    Serial.print("WiFi");
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+    Serial.println(" OK");
 
-    pinMode(HEATER_PIN, OUTPUT);
-    analogWrite(HEATER_PIN, 0);
-
-    pinMode(EMERGENCY_STOP_PIN, INPUT_PULLUP);
-
-    connectWiFi();
-
-    fbConfig.host    = FIREBASE_HOST;
-    fbConfig.api_key = FIREBASE_API_KEY;
-    Firebase.begin(&fbConfig, &fbAuth);
-    Firebase.reconnectWiFi(true);
-
-    unsigned long t = millis();
-    while (!Firebase.ready() && millis() - t < 15000) { delay(200); }
-    firebaseReady = Firebase.ready();
-    Serial.println(firebaseReady ? "Firebase OK" : "Firebase FALLO");
-
-    if (firebaseReady) setupFirebaseStream();
-
-    lastPidTime = millis();
-    Serial.println("=== LUMACONTROL Machine v3.0 ===");
-    Serial.println("Motores listos. Comandos seriales:");
-    Serial.println("  T1 = test motor inyeccion");
-    Serial.println("  T2 = test motor rotacion");
-    Serial.println("  TT = test ambos motores");
-    Serial.println("  S  = stop motores");
+    Serial.println("{\"type\":\"ready\",\"message\":\"Sistema listo\"}");
 }
 
-// ============================================================
-// LOOP
-// ============================================================
+// ===================== LOOP =====================
 void loop() {
-    if (digitalRead(EMERGENCY_STOP_PIN) == LOW) {
-        emergencyStop();
+    unsigned long now = millis();
+
+    // Leer sensor cada segundo
+    if (now - lastSend >= 1000) {
+        lastSend = now;
+
+        currentAmps = readCurrentRMS();
+
+        // Enviar por Serial
+        sendSensorData();
+
+        // Subir a Firebase
+        uploadToFirebase();
     }
-
-    // Comandos seriales para testing
-    if (Serial.available()) {
-        String cmd = Serial.readStringUntil('\n');
-        cmd.trim();
-        cmd.toUpperCase();
-
-        if (cmd == "T1") {
-            startInjectionTest();
-        } else if (cmd == "T2") {
-            startRotationTest();
-        } else if (cmd == "TT") {
-            startInjectionTest();
-            startRotationTest();
-        } else if (cmd == "S") {
-            stopMotors();
-            machineState = IDLE;
-            setHeaterPower(0);
-            Serial.println("STOP - motores detenidos");
-        }
-    }
-
-    updateMotors();
-
-    if (millis() - lastSend >= SEND_INTERVAL) {
-        lastSend = millis();
-
-        if (firebaseReady && WiFi.status() == WL_CONNECTED) {
-            sendSensorData();
-        } else {
-            Serial.println("WiFi caido - reconectando...");
-            connectWiFi();
-            firebaseReady = Firebase.ready();
-            if (firebaseReady) setupFirebaseStream();
-        }
-    }
-
-    if (machineState == HEATING || machineState == INJECTING) {
-        currentTemp = readThermistor();
-        if (currentTemp >= MAX_TEMP) {
-            emergencyStop();
-        } else {
-            pidOutput = computePID(currentTemp, targetTemp);
-            setHeaterPower((int)pidOutput);
-        }
-    }
-
-    double irms = emon1.calcIrms(1480);
-    if (irms > MAX_CURRENT && !emergencyStopActive) {
-        emergencyStop();
-    }
-
-    Firebase.RTDB.readTimeout(&fbdoStream);
 }
