@@ -1,4 +1,4 @@
-package com.lumajira.lumacontrol;
+package com.lumajira.lumacontrol2026;
 
 import com.getcapacitor.BridgeActivity;
 

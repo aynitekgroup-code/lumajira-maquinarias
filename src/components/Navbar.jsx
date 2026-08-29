@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { colors } from '../styles/theme';
 import Button from './ui/Button';
 
@@ -7,7 +8,9 @@ export default function Navbar({
   onToggleNotifications,
   onLogout,
   online,
+  isAdmin,
 }) {
+  const navigate = useNavigate();
   return (
     <nav style={{
       background: colors.bgCard,
@@ -42,6 +45,11 @@ export default function Navbar({
         </div>
       </div>
       <div className="nav-actions" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        {isAdmin && (
+          <Button variant="outline" size="sm" onClick={() => navigate('/admin')}>
+            Admin
+          </Button>
+        )}
         <span className="hide-mobile" style={{ fontSize: '0.85rem', color: colors.textMuted }}>
           {userName}
         </span>

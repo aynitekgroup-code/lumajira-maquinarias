@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -40,7 +40,7 @@ export function AuthProvider({ children }) {
       createdAt: new Date().toISOString(),
       role: 'operator',
     });
-    setUserData({ name, email });
+    setUserData({ name, email, role: 'operator' });
   }
 
   async function login(email, password) {
@@ -51,8 +51,12 @@ export function AuthProvider({ children }) {
     return signOut(auth);
   }
 
+  const isAdmin = useMemo(() => {
+    return userData?.role === 'admin' || user?.email === 'aynitek.group@gmail.com';
+  }, [userData, user]);
+
   return (
-    <AuthContext.Provider value={{ user, userData, loading, register, login, logout }}>
+    <AuthContext.Provider value={{ user, userData, loading, register, login, logout, isAdmin }}>
       {children}
     </AuthContext.Provider>
   );

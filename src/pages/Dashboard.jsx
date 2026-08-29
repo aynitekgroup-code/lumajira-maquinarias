@@ -15,7 +15,7 @@ import MachineSelector, { MachineHeader, EmptyMachines } from '../components/Mac
 import { colors } from '../styles/theme';
 
 export default function Dashboard() {
-  const { user, userData, logout } = useAuth();
+  const { user, userData, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const online = useOnlineStatus();
@@ -99,6 +99,7 @@ export default function Dashboard() {
         onToggleNotifications={handleNotificationToggle}
         onLogout={handleLogout}
         online={online && connected}
+        isAdmin={isAdmin}
       />
 
       {!online && (
