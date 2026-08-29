@@ -8,7 +8,7 @@
     "@capacitor/core": "^8.5.0",
     "@capacitor/push-notifications": "^8.1.2",
     "@capacitor/status-bar": "^8.0.3",
-    "@supabase/supabase-js": "^2.45.0",
+    "@supabase/supabase-js": "^2.112.4",
     "ajv": "^8.20.0",
     "date-fns": "^3.3.1",
     "react": "^18.2.0",
