@@ -1,18 +1,18 @@
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
-import { getToken, onMessage } from 'firebase/messaging';
-import { doc, updateDoc, setDoc } from 'firebase/firestore';
-import { messaging, db } from '../firebase/config';
+import { supabase } from '../supabase/config';
 
-const VAPID_KEY = process.env.REACT_APP_FIREBASE_VAPID_KEY || '';
 const isNative = Capacitor.isNativePlatform();
 
 async function saveToken(user, token) {
-  await setDoc(
-    doc(db, 'users', user.uid),
-    { fcmToken: token, notificationsEnabled: true, platform: isNative ? 'android' : 'web' },
-    { merge: true }
-  );
+  await supabase
+    .from('users')
+    .upsert({
+      id: user.id,
+      fcm_token: token,
+      notifications_enabled: true,
+      platform: isNative ? 'android' : 'web',
+    }, { onConflict: 'id' });
 }
 
 async function requestNativeNotifications(user) {
@@ -39,18 +39,16 @@ async function requestNativeNotifications(user) {
 }
 
 async function requestWebNotifications(user) {
-  if (!messaging) return null;
   if (!('Notification' in window)) return null;
 
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') return null;
 
-  const token = await getToken(messaging, { vapidKey: VAPID_KEY });
-  if (token) {
-    await saveToken(user, token);
-    return token;
-  }
-  return null;
+  const { data, error } = await supabase.functions.invoke('send-web-notification', {
+    body: { user_id: user.id },
+  });
+  if (error) return null;
+  return data?.token || null;
 }
 
 export async function requestNotificationPermission(user) {
@@ -81,15 +79,7 @@ export function onMessageListener() {
     };
   }
 
-  if (!messaging) return () => {};
-  return onMessage(messaging, (payload) => {
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification(payload.notification?.title || 'LumaControl', {
-        body: payload.notification?.body || '',
-        icon: '/team.png.png',
-      });
-    }
-  });
+  return () => {};
 }
 
 export async function disableNotifications(user) {
@@ -98,10 +88,13 @@ export async function disableNotifications(user) {
     if (isNative) {
       await PushNotifications.removeAllListeners();
     }
-    await updateDoc(doc(db, 'users', user.uid), {
-      notificationsEnabled: false,
-      fcmToken: null,
-    });
+    await supabase
+      .from('users')
+      .update({
+        notifications_enabled: false,
+        fcm_token: null,
+      })
+      .eq('id', user.id);
   } catch (err) {
     console.error('Error al desactivar notificaciones:', err);
   }

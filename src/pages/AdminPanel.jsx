@@ -44,10 +44,6 @@ export default function AdminPanel() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.name || !form.email) {
-      showToast('Nombre y correo son obligatorios', 'error');
-      return;
-    }
     try {
       if (editingId) {
         await updateAllie(editingId, form);
@@ -119,11 +115,11 @@ export default function AdminPanel() {
             </h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: spacing.md }}>
               <div>
-                <label style={labelStyle}>Nombre *</label>
+                <label style={labelStyle}>Nombre</label>
                 <input name="name" value={form.name} onChange={handleChange} style={inputStyle} placeholder="Nombre completo" />
               </div>
               <div>
-                <label style={labelStyle}>Correo *</label>
+                <label style={labelStyle}>Correo</label>
                 <input name="email" type="email" value={form.email} onChange={handleChange} style={inputStyle} placeholder="correo@empresa.com" />
               </div>
               <div>
@@ -132,7 +128,7 @@ export default function AdminPanel() {
               </div>
               <div>
                 <label style={labelStyle}>Cargo</label>
-                <input name="position" value={form.position} onChange={handleChange} style={inputStyle} placeholder="Gerente de Operations" />
+                <input name="position" value={form.position} onChange={handleChange} style={inputStyle} placeholder="Gerente de Operaciones" />
               </div>
               <div>
                 <label style={labelStyle}>Empresa</label>
@@ -178,8 +174,17 @@ export default function AdminPanel() {
                       <p style={{ color: colors.primary, margin: '0 0 0.5rem', fontSize: '0.85rem' }}>{ally.company}</p>
                     )}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                      <span style={{ color: colors.textMuted, fontSize: '0.82rem' }}>📧 {ally.email}</span>
-                      {ally.whatsapp && <span style={{ color: colors.textMuted, fontSize: '0.82rem' }}>📱 {ally.whatsapp}</span>}
+                      {ally.email && <span style={{ color: colors.textMuted, fontSize: '0.82rem' }}>📧 {ally.email}</span>}
+                      {ally.whatsapp && (
+                        <a
+                          href={`https://wa.me/${ally.whatsapp.replace(/[^0-9]/g, '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: colors.success, fontSize: '0.82rem', textDecoration: 'none' }}
+                        >
+                          📱 {ally.whatsapp} → Enviar mensaje
+                        </a>
+                      )}
                     </div>
                     {ally.description && (
                       <p style={{ color: colors.textMuted, fontSize: '0.82rem', marginTop: '0.5rem', lineHeight: '1.5' }}>{ally.description}</p>

@@ -1,13 +1,5 @@
 import { createContext, useContext, useEffect, useState, useMemo } from 'react';
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signOut,
-  onAuthStateChanged,
-  updateProfile,
-} from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { auth, db } from '../firebase/config';
+import { supabase } from '../supabase/config';
 
 const AuthContext = createContext(null);
 
@@ -17,38 +9,68 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        setUser(firebaseUser);
-        const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
-        if (snap.exists()) setUserData(snap.data());
-      } else {
-        setUser(null);
-        setUserData(null);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setUser(session.user);
+        fetchUserData(session.user.id);
       }
       setLoading(false);
     });
-    return unsub;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (session?.user) {
+          setUser(session.user);
+          await fetchUserData(session.user.id);
+        } else {
+          setUser(null);
+          setUserData(null);
+        }
+        setLoading(false);
+      }
+    );
+
+    return () => subscription.unsubscribe();
   }, []);
 
+  async function fetchUserData(userId) {
+    const { data } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+    if (data) setUserData(data);
+  }
+
   async function register(name, email, password) {
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
-    await updateProfile(cred.user, { displayName: name });
-    await setDoc(doc(db, 'users', cred.user.uid), {
-      name,
+    const { data, error } = await supabase.auth.signUp({
       email,
-      createdAt: new Date().toISOString(),
-      role: 'operator',
+      password,
+      options: { data: { name } },
     });
-    setUserData({ name, email, role: 'operator' });
+    if (error) throw error;
+
+    if (data.user) {
+      await supabase.from('users').upsert({
+        id: data.user.id,
+        name,
+        email,
+        role: 'operator',
+        created_at: new Date().toISOString(),
+      });
+      setUserData({ id: data.user.id, name, email, role: 'operator' });
+    }
   }
 
   async function login(email, password) {
-    return signInWithEmailAndPassword(auth, email, password);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
   }
 
   async function logout() {
-    return signOut(auth);
+    await supabase.auth.signOut();
+    setUser(null);
+    setUserData(null);
   }
 
   const isAdmin = useMemo(() => {

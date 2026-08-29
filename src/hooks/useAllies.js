@@ -1,15 +1,5 @@
 import { useState, useEffect } from 'react';
-import {
-  collection,
-  getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  orderBy,
-  query,
-} from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { supabase } from '../supabase/config';
 
 export default function useAllies() {
   const [allies, setAllies] = useState([]);
@@ -17,13 +7,11 @@ export default function useAllies() {
 
   async function fetchAllies() {
     setLoading(true);
-    try {
-      const q = query(collection(db, 'allies'), orderBy('createdAt', 'desc'));
-      const snap = await getDocs(q);
-      setAllies(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    } catch (e) {
-      console.error('Error fetching allies:', e);
-    }
+    const { data, error } = await supabase
+      .from('allies')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (!error) setAllies(data || []);
     setLoading(false);
   }
 
@@ -32,20 +20,30 @@ export default function useAllies() {
   }, []);
 
   async function addAllie(data) {
-    const docRef = await addDoc(collection(db, 'allies'), {
-      ...data,
-      createdAt: new Date().toISOString(),
-    });
-    setAllies(prev => [{ id: docRef.id, ...data, createdAt: new Date().toISOString() }, ...prev]);
+    const { data: newAlly, error } = await supabase
+      .from('allies')
+      .insert({ ...data, created_at: new Date().toISOString() })
+      .select()
+      .single();
+    if (error) throw error;
+    setAllies(prev => [newAlly, ...prev]);
   }
 
   async function updateAllie(id, data) {
-    await updateDoc(doc(db, 'allies', id), data);
+    const { error } = await supabase
+      .from('allies')
+      .update(data)
+      .eq('id', id);
+    if (error) throw error;
     setAllies(prev => prev.map(a => (a.id === id ? { ...a, ...data } : a)));
   }
 
   async function deleteAllie(id) {
-    await deleteDoc(doc(db, 'allies', id));
+    const { error } = await supabase
+      .from('allies')
+      .delete()
+      .eq('id', id);
+    if (error) throw error;
     setAllies(prev => prev.filter(a => a.id !== id));
   }
 

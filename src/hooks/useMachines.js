@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { collection, query, where, getDocs, addDoc, updateDoc, doc } from 'firebase/firestore';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../firebase/config';
+import { supabase } from '../supabase/config';
 
 export function useMachines(user, showToast) {
   const [machines, setMachines] = useState([]);
@@ -15,9 +13,13 @@ export function useMachines(user, showToast) {
     if (!user) return;
     setLoading(true);
     try {
-      const q = query(collection(db, 'machines'), where('ownerId', '==', user.uid));
-      const snap = await getDocs(q);
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const { data, error } = await supabase
+        .from('machines')
+        .select('*')
+        .eq('owner_id', user.id)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      const list = data || [];
       setMachines(list);
       setSelectedMachine((prev) => {
         if (prev && list.some((m) => m.id === prev.id)) return prev;
@@ -38,16 +40,20 @@ export function useMachines(user, showToast) {
   async function addMachine() {
     if (!newMachineName.trim() || !user) return;
     try {
-      const docRef = await addDoc(collection(db, 'machines'), {
-        name: newMachineName.trim(),
-        ownerId: user.uid,
-        rtdbId: user.uid,
-        createdAt: new Date().toISOString(),
-        sensors: [{ type: 'SCT-013', name: 'Corriente Resistencias Banda', unit: 'A' }],
-      });
-      const newM = { id: docRef.id, name: newMachineName.trim(), rtdbId: user.uid };
-      setMachines((prev) => [...prev, newM]);
-      setSelectedMachine(newM);
+      const { data, error } = await supabase
+        .from('machines')
+        .insert({
+          name: newMachineName.trim(),
+          owner_id: user.id,
+          rtdb_id: user.id,
+          created_at: new Date().toISOString(),
+          sensors: [{ type: 'SCT-013', name: 'Corriente Resistencias Banda', unit: 'A' }],
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      setMachines((prev) => [...prev, data]);
+      setSelectedMachine(data);
       setNewMachineName('');
       setShowAddMachine(false);
       showToast?.('Maquina agregada', 'success');
@@ -70,11 +76,20 @@ export function useMachines(user, showToast) {
     setUploadingImage(true);
     try {
       const ext = file.name.split('.').pop();
-      const imgRef = storageRef(storage, `machines/${machine.id}/photo.${ext}`);
-      await uploadBytes(imgRef, file);
-      const url = await getDownloadURL(imgRef);
-      await updateDoc(doc(db, 'machines', machine.id), { imageUrl: url });
-      const updated = { ...machine, imageUrl: url };
+      const filePath = `machines/${machine.id}/photo.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from('machine-images')
+        .upload(filePath, file, { upsert: true });
+      if (uploadError) throw uploadError;
+      const { data: urlData } = supabase.storage
+        .from('machine-images')
+        .getPublicUrl(filePath);
+      const url = urlData.publicUrl;
+      await supabase
+        .from('machines')
+        .update({ image_url: url })
+        .eq('id', machine.id);
+      const updated = { ...machine, image_url: url };
       setSelectedMachine((prev) => (prev?.id === machine.id ? updated : prev));
       setMachines((prev) => prev.map((m) => (m.id === machine.id ? updated : m)));
       showToast?.('Imagen actualizada', 'success');
