@@ -7,7 +7,7 @@ import Navbar from '../components/Navbar';
 import Button from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
 
-const emptyForm = { name: '', email: '', whatsapp: '', position: '', company: '', description: '' };
+const emptyForm = { name: '', email: '', whatsapp: '', position: '', empresa: '', description: '' };
 
 const inputStyle = {
   width: '100%',
@@ -61,7 +61,7 @@ export default function AdminPanel() {
   }
 
   function handleEdit(ally) {
-    setForm({ name: ally.name, email: ally.email, whatsapp: ally.whatsapp || '', position: ally.position || '', company: ally.company || '', description: ally.description || '' });
+    setForm({ name: ally.name, email: ally.email, whatsapp: ally.whatsapp || '', position: ally.position || '', empresa: ally.empresa || '', description: ally.description || '' });
     setEditingId(ally.id);
     setShowForm(true);
   }
@@ -132,7 +132,7 @@ export default function AdminPanel() {
               </div>
               <div>
                 <label style={labelStyle}>Empresa</label>
-                <input name="company" value={form.company} onChange={handleChange} style={inputStyle} placeholder="Nombre de la empresa" />
+                <input name="empresa" value={form.empresa} onChange={handleChange} style={inputStyle} placeholder="Nombre de la empresa" />
               </div>
               <div style={{ gridColumn: '1 / -1' }}>
                 <label style={labelStyle}>Descripcion</label>
@@ -164,14 +164,14 @@ export default function AdminPanel() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: spacing.sm }}>
                   <div style={{ flex: 1, minWidth: '200px' }}>
                     <h3 style={{ color: colors.white, margin: '0 0 0.3rem', fontSize: '1.1rem' }}>{ally.name}</h3>
-                    {ally.position && ally.company && (
-                      <p style={{ color: colors.primary, margin: '0 0 0.5rem', fontSize: '0.85rem' }}>{ally.position} - {ally.company}</p>
+                    {ally.position && ally.empresa && (
+                      <p style={{ color: colors.primary, margin: '0 0 0.5rem', fontSize: '0.85rem' }}>{ally.position} - {ally.empresa}</p>
                     )}
-                    {ally.position && !ally.company && (
+                    {ally.position && !ally.empresa && (
                       <p style={{ color: colors.primary, margin: '0 0 0.5rem', fontSize: '0.85rem' }}>{ally.position}</p>
                     )}
-                    {!ally.position && ally.company && (
-                      <p style={{ color: colors.primary, margin: '0 0 0.5rem', fontSize: '0.85rem' }}>{ally.company}</p>
+                    {!ally.position && ally.empresa && (
+                      <p style={{ color: colors.primary, margin: '0 0 0.5rem', fontSize: '0.85rem' }}>{ally.empresa}</p>
                     )}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                       {ally.email && <span style={{ color: colors.textMuted, fontSize: '0.82rem' }}>📧 {ally.email}</span>}
