@@ -22,7 +22,7 @@ export default function useAllies() {
   async function addAllie(data) {
     const { data: newAlly, error } = await supabase
       .from('allies')
-      .insert({ ...data, created_at: new Date().toISOString() })
+      .insert(data)
       .select()
       .single();
     if (error) throw error;

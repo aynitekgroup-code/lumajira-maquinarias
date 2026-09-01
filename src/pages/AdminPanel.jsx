@@ -7,7 +7,7 @@ import Navbar from '../components/Navbar';
 import Button from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
 
-const emptyForm = { name: '', email: '', whatsapp: '', position: '', empresa: '', description: '' };
+const emptyForm = { name: '', contact_name: '', email: '', phone: '', address: '' };
 
 const inputStyle = {
   width: '100%',
@@ -61,7 +61,7 @@ export default function AdminPanel() {
   }
 
   function handleEdit(ally) {
-    setForm({ name: ally.name, email: ally.email, whatsapp: ally.whatsapp || '', position: ally.position || '', empresa: ally.empresa || '', description: ally.description || '' });
+    setForm({ name: ally.name || '', contact_name: ally.contact_name || '', email: ally.email || '', phone: ally.phone || '', address: ally.address || '' });
     setEditingId(ally.id);
     setShowForm(true);
   }
@@ -116,27 +116,23 @@ export default function AdminPanel() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: spacing.md }}>
               <div>
                 <label style={labelStyle}>Nombre</label>
-                <input name="name" value={form.name} onChange={handleChange} style={inputStyle} placeholder="Nombre completo" />
+                <input name="name" value={form.name} onChange={handleChange} style={inputStyle} placeholder="Nombre del aliado" />
+              </div>
+              <div>
+                <label style={labelStyle}>Nombre de contacto</label>
+                <input name="contact_name" value={form.contact_name} onChange={handleChange} style={inputStyle} placeholder="Nombre del contacto" />
               </div>
               <div>
                 <label style={labelStyle}>Correo</label>
                 <input name="email" type="email" value={form.email} onChange={handleChange} style={inputStyle} placeholder="correo@empresa.com" />
               </div>
               <div>
-                <label style={labelStyle}>WhatsApp</label>
-                <input name="whatsapp" value={form.whatsapp} onChange={handleChange} style={inputStyle} placeholder="+51 999 888 777" />
-              </div>
-              <div>
-                <label style={labelStyle}>Cargo</label>
-                <input name="position" value={form.position} onChange={handleChange} style={inputStyle} placeholder="Gerente de Operaciones" />
-              </div>
-              <div>
-                <label style={labelStyle}>Empresa</label>
-                <input name="empresa" value={form.empresa} onChange={handleChange} style={inputStyle} placeholder="Nombre de la empresa" />
+                <label style={labelStyle}>Telefono</label>
+                <input name="phone" value={form.phone} onChange={handleChange} style={inputStyle} placeholder="+51 999 888 777" />
               </div>
               <div style={{ gridColumn: '1 / -1' }}>
-                <label style={labelStyle}>Descripcion</label>
-                <textarea name="description" value={form.description} onChange={handleChange} rows={3} style={{ ...inputStyle, resize: 'vertical' }} placeholder="Descripcion del aliado..." />
+                <label style={labelStyle}>Direccion / Empresa</label>
+                <input name="address" value={form.address} onChange={handleChange} style={inputStyle} placeholder="Direccion o nombre de la empresa" />
               </div>
             </div>
             <div style={{ display: 'flex', gap: spacing.sm, marginTop: spacing.md }}>
@@ -164,31 +160,25 @@ export default function AdminPanel() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: spacing.sm }}>
                   <div style={{ flex: 1, minWidth: '200px' }}>
                     <h3 style={{ color: colors.white, margin: '0 0 0.3rem', fontSize: '1.1rem' }}>{ally.name}</h3>
-                    {ally.position && ally.empresa && (
-                      <p style={{ color: colors.primary, margin: '0 0 0.5rem', fontSize: '0.85rem' }}>{ally.position} - {ally.empresa}</p>
+                    {ally.contact_name && (
+                      <p style={{ color: colors.primary, margin: '0 0 0.5rem', fontSize: '0.85rem' }}>{ally.contact_name}</p>
                     )}
-                    {ally.position && !ally.empresa && (
-                      <p style={{ color: colors.primary, margin: '0 0 0.5rem', fontSize: '0.85rem' }}>{ally.position}</p>
-                    )}
-                    {!ally.position && ally.empresa && (
-                      <p style={{ color: colors.primary, margin: '0 0 0.5rem', fontSize: '0.85rem' }}>{ally.empresa}</p>
+                    {ally.address && (
+                      <p style={{ color: colors.primary, margin: '0 0 0.5rem', fontSize: '0.85rem' }}>{ally.address}</p>
                     )}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                       {ally.email && <span style={{ color: colors.textMuted, fontSize: '0.82rem' }}>📧 {ally.email}</span>}
-                      {ally.whatsapp && (
+                      {ally.phone && (
                         <a
-                          href={`https://wa.me/${ally.whatsapp.replace(/[^0-9]/g, '')}`}
+                          href={`https://wa.me/${ally.phone.replace(/[^0-9]/g, '')}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           style={{ color: colors.success, fontSize: '0.82rem', textDecoration: 'none' }}
                         >
-                          📱 {ally.whatsapp} → Enviar mensaje
+                          📱 {ally.phone} → Enviar mensaje
                         </a>
                       )}
                     </div>
-                    {ally.description && (
-                      <p style={{ color: colors.textMuted, fontSize: '0.82rem', marginTop: '0.5rem', lineHeight: '1.5' }}>{ally.description}</p>
-                    )}
                   </div>
                   <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
                     <Button variant="outline" size="sm" onClick={() => handleEdit(ally)}>
