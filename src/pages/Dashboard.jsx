@@ -35,7 +35,7 @@ export default function Dashboard() {
     uploadMachineImage,
   } = useMachines(user, showToast);
 
-  const rtdbId = selectedMachine?.rtdbId || user?.uid;
+  const rtdbId = selectedMachine?.rtdb_id || user?.uid;
 
   const {
     readings,

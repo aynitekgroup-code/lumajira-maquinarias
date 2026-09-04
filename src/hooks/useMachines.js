@@ -13,10 +13,19 @@ export function useMachines(user, showToast) {
     if (!user) return;
     setLoading(true);
     try {
+      // Verify session is active
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        console.error('Session error loading machines:', sessionError);
+        showToast?.('Sesion no valida', 'error');
+        setLoading(false);
+        return;
+      }
+      
       const { data, error } = await supabase
         .from('machines')
         .select('*')
-        .eq('owner_id', user.id)
+        .eq('owner_id', session.user.id) // Use session.user.id
         .order('created_at', { ascending: false });
       if (error) throw error;
       const list = data || [];
@@ -26,8 +35,8 @@ export function useMachines(user, showToast) {
         return list[0] || null;
       });
     } catch (err) {
-      console.error(err);
-      showToast?.('Error al cargar maquinas', 'error');
+      console.error('Error loading machines:', err);
+      showToast?.(`Error al cargar maquinas: ${err.message}`, 'error');
     } finally {
       setLoading(false);
     }
@@ -39,13 +48,24 @@ export function useMachines(user, showToast) {
 
   async function addMachine() {
     if (!newMachineName.trim() || !user) return;
+    
+    // Verify session is active
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !session) {
+      console.error('Session error:', sessionError);
+      showToast?.('Sesion no valida. Inicia sesion nuevamente.', 'error');
+      return;
+    }
+    
+    console.log('Adding machine with user.id:', user.id, 'auth.uid:', session.user.id);
+    
     try {
       const { data, error } = await supabase
         .from('machines')
         .insert({
           name: newMachineName.trim(),
-          owner_id: user.id,
-          rtdb_id: user.id,
+          owner_id: session.user.id, // Use session.user.id to ensure it matches auth.uid()
+          rtdb_id: session.user.id,
           created_at: new Date().toISOString(),
           sensors: [{ type: 'SCT-013', name: 'Corriente Resistencias Banda', unit: 'A' }],
         })
@@ -58,8 +78,8 @@ export function useMachines(user, showToast) {
       setShowAddMachine(false);
       showToast?.('Maquina agregada', 'success');
     } catch (err) {
-      console.error(err);
-      showToast?.('Error al agregar maquina', 'error');
+      console.error('Error adding machine:', err);
+      showToast?.(`Error al agregar maquina: ${err.message}`, 'error');
     }
   }
 
@@ -73,6 +93,14 @@ export function useMachines(user, showToast) {
       showToast?.('La imagen no debe superar 5MB', 'warning');
       return;
     }
+    
+    // Verify session is active
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !session) {
+      showToast?.('Sesion no valida', 'error');
+      return;
+    }
+    
     setUploadingImage(true);
     try {
       const ext = file.name.split('.').pop();
@@ -94,8 +122,8 @@ export function useMachines(user, showToast) {
       setMachines((prev) => prev.map((m) => (m.id === machine.id ? updated : m)));
       showToast?.('Imagen actualizada', 'success');
     } catch (err) {
-      console.error(err);
-      showToast?.('Error al subir imagen', 'error');
+      console.error('Error uploading image:', err);
+      showToast?.(`Error al subir imagen: ${err.message}`, 'error');
     } finally {
       setUploadingImage(false);
     }
