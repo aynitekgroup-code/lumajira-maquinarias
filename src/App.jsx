@@ -8,6 +8,7 @@ import SplashPage from './pages/SplashPage';
 import AuthPage from './pages/AuthPage';
 import Dashboard from './pages/Dashboard';
 import AdminPanel from './pages/AdminPanel';
+import DemoPage from './pages/DemoPage';
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -35,6 +36,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<SplashPage />} />
             <Route path="/login" element={<AuthPage />} />
+            <Route path="/demo" element={<DemoPage />} />
             <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
             <Route path="/admin" element={<AdminRoute><AdminPanel /></AdminRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
