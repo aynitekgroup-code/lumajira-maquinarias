@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useMockSensorData } from '../hooks/useMockSensorData';
 import MockControlPanel from '../components/MockControlPanel';
 import MetricCard from '../components/MetricCard';

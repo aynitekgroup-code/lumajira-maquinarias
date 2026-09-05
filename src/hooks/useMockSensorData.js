@@ -5,7 +5,6 @@ import {
   predictiveMaintenance,
 } from '../utils/alerts';
 
-const MACHINE_STATES = ['idle', 'heating', 'injecting', 'cooling'];
 const PLASTIC_PROFILES = {
   PP: { minTemp: 200, maxTemp: 230, nominalCurrent: 4.5 },
   PE: { minTemp: 180, maxTemp: 220, nominalCurrent: 4.0 },
