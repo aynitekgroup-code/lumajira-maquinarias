@@ -10,19 +10,17 @@ const char* FIREBASE_HOST = "lumajiramaquinarias-d273c-default-rtdb.firebaseio.c
 String MACHINE_RTDB_ID = "ecFPpcTf1Rgd5OyC2XSwXyfpFHo2";
 
 // ===================== PINES =====================
-#define PIN_SCT013 34    // SCT-013-100A 50mA en GPIO 34
+#define PIN_SCT013 34    // SCT-013-030 (30A) en GPIO 34
 
-// ===================== SENSOR =====================
-// SCT-013 100A:50mA
-// Con burden resistor de 100 ohm: 50mA * 100 = 5V pico
-// Con burden resistor de 47 ohm: 50mA * 47 = 2.35V pico
-// Factor de calibracion: ajustar segun tu burden resistor
-const float BURDEN_RESISTANCE = 47.0;  // ohms (ajustar al tuyo)
-const float SENSOR_RATIO = 2000.0;      // 100A / 50mA = 2000
+// ===================== SENSOR SCT-013-030 (30A) =====================
+// SCT-013-030: 30A / 30mA = ratio 1000
+// Con burden resistor de 33 ohm: 30mA * 33 = 0.99V pico
+const float BURDEN_RESISTANCE = 33.0;  // ohms (para SCT-013-030)
+const float SENSOR_RATIO = 1000.0;      // 30A / 30mA = 1000
 const float ADC_VOLTAGE = 3.3;          // Voltaje maximo ADC ESP32
 const float ADC_MAX = 4095.0;           // Resolucion ADC
 
-//muestras para RMS
+// Muestras para RMS
 const int NUM_SAMPLES = 200;
 
 // ===================== VARIABLES =====================
@@ -64,7 +62,6 @@ void sendSensorData() {
     StaticJsonDocument<128> doc;
     doc["type"] = "sensor_data";
     doc["current_a"] = round(currentAmps * 100) / 100.0;
-    doc["temperature_c"] = 25.0;
     doc["timestamp"] = millis();
 
     serializeJson(doc, Serial);
@@ -78,19 +75,11 @@ void uploadToFirebase() {
     int ts = millis();
 
     // Subir corriente
-    String url1 = "https://" + String(FIREBASE_HOST) + "/sensors/" + MACHINE_RTDB_ID + "/sct013.json";
-    http.begin(url1);
+    String url = "https://" + String(FIREBASE_HOST) + "/sensors/" + MACHINE_RTDB_ID + "/sct013.json";
+    http.begin(url);
     http.addHeader("Content-Type", "application/json");
-    String body1 = "{\"current_a\":" + String(currentAmps, 2) + ",\"timestamp\":" + String(ts) + "}";
-    http.POST(body1);
-    http.end();
-
-    // Subir temperatura fija (para que la app no muestre error)
-    String url2 = "https://" + String(FIREBASE_HOST) + "/sensors/" + MACHINE_RTDB_ID + "/thermistor.json";
-    http.begin(url2);
-    http.addHeader("Content-Type", "application/json");
-    String body2 = "{\"temperature_c\":25.0,\"timestamp\":" + String(ts) + "}";
-    http.POST(body2);
+    String body = "{\"current_a\":" + String(currentAmps, 2) + ",\"timestamp\":" + String(ts) + "}";
+    http.POST(body);
     http.end();
 }
 
@@ -101,7 +90,7 @@ void setup() {
 
     pinMode(PIN_SCT013, INPUT);
 
-    Serial.println("{\"type\":\"boot\",\"message\":\"SCT-013 100A listo\"}");
+    Serial.println("{\"type\":\"boot\",\"message\":\"SCT-013-030 30A listo\"}");
 
     // Conectar WiFi
     WiFi.begin(WIFI_SSID, WIFI_PASS);
