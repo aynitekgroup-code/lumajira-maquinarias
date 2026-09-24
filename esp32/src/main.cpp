@@ -1,123 +1,170 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
-#include <ArduinoJson.h>
+#include <time.h>
 
-// ===================== CONFIGURACION =====================
 const char* WIFI_SSID = "Josepro";
 const char* WIFI_PASS = "12345678";
-const char* FIREBASE_HOST = "lumajiramaquinarias-d273c-default-rtdb.firebaseio.com";
-String MACHINE_RTDB_ID = "ecFPpcTf1Rgd5OyC2XSwXyfpFHo2";
 
-// ===================== PINES =====================
-#define PIN_SCT013 34    // SCT-013-030 (30A) en GPIO 34
+const char* SUPABASE_HOST = "iqdthjimoxrzgqrqjhlq.supabase.co";
+const char* SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlxZHRoamltb3hyemdxcnFqaGxxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgwMDgyMDksImV4cCI6MjEwMzU4NDIwOX0.dedUoBoqsDynZXhZLHO6hjni7sYKaKwR7zuFa3A7JPs";
+const char* MACHINE_ID = "de570528-0f87-4c5b-9548-5d94fac03635";
 
-// ===================== SENSOR SCT-013-030 (30A) =====================
-// SCT-013-030: 30A / 30mA = ratio 1000
-// Con burden resistor de 33 ohm: 30mA * 33 = 0.99V pico
-const float BURDEN_RESISTANCE = 33.0;  // ohms (para SCT-013-030)
-const float SENSOR_RATIO = 1000.0;      // 30A / 30mA = 1000
-const float ADC_VOLTAGE = 3.3;          // Voltaje maximo ADC ESP32
-const float ADC_MAX = 4095.0;           // Resolucion ADC
+#define PIN_SCT013 34
 
-// Muestras para RMS
-const int NUM_SAMPLES = 200;
+const int NUM_SAMPLES = 1400;
+const unsigned long SEND_INTERVAL_MS = 2000;
 
-// ===================== VARIABLES =====================
 float currentAmps = 0.0;
+float adcOffset = 2048.0;
 unsigned long lastSend = 0;
+int uploadFails = 0;
 
-// ===================== FUNCIONES =====================
 float readCurrentRMS() {
     long sumSquares = 0;
-    int validSamples = 0;
 
     for (int i = 0; i < NUM_SAMPLES; i++) {
         int adcValue = analogRead(PIN_SCT013);
-
-        // Convertir ADC a voltaje
-        float voltage = (adcValue / ADC_MAX) * ADC_VOLTAGE;
-
-        // Restar offset DC (centro del rango ADC = 1.65V)
-        float voltageAC = voltage - (ADC_VOLTAGE / 2.0);
-
-        sumSquares += voltageAC * voltageAC;
-        validSamples++;
-
-        delayMicroseconds(500);  // ~2kHz sample rate
+        float diff = adcValue - adcOffset;
+        sumSquares += diff * diff;
+        delayMicroseconds(100);
     }
 
-    if (validSamples == 0) return 0.0;
+    float rmsADC = sqrt((float)sumSquares / NUM_SAMPLES);
+    float rmsVoltage = (rmsADC / 4095.0) * 3.3;
+    float sensorVoltage = rmsVoltage * 2.0;
+    float amps = sensorVoltage * 15.0;
 
-    // Voltaje RMS
-    float rmsVoltage = sqrt(sumSquares / (float)validSamples);
-
-    // Corriente RMS = Voltaje RMS / Burden * Factor sensor
-    float rmsCurrent = (rmsVoltage / BURDEN_RESISTANCE) * SENSOR_RATIO;
-
-    return rmsCurrent;
+    return amps;
 }
 
-void sendSensorData() {
-    StaticJsonDocument<128> doc;
-    doc["type"] = "sensor_data";
-    doc["current_a"] = round(currentAmps * 100) / 100.0;
-    doc["timestamp"] = millis();
-
-    serializeJson(doc, Serial);
-    Serial.println();
+int64_t epochMs() {
+    struct timeval tv;
+    gettimeofday(&tv, nullptr);
+    return (int64_t)tv.tv_sec * 1000LL + tv.tv_usec / 1000LL;
 }
 
-void uploadToFirebase() {
-    if (WiFi.status() != WL_CONNECTED) return;
+int uploadToSupabase() {
+    if (WiFi.status() != WL_CONNECTED) return -1;
 
     HTTPClient http;
-    int ts = millis();
-
-    // Subir corriente
-    String url = "https://" + String(FIREBASE_HOST) + "/sensors/" + MACHINE_RTDB_ID + "/sct013.json";
+    String url = "https://" + String(SUPABASE_HOST) + "/rest/v1/sensor_readings";
     http.begin(url);
+    http.setTimeout(8000);
     http.addHeader("Content-Type", "application/json");
-    String body = "{\"current_a\":" + String(currentAmps, 2) + ",\"timestamp\":" + String(ts) + "}";
-    http.POST(body);
+    http.addHeader("apikey", SUPABASE_KEY);
+    http.addHeader("Authorization", "Bearer " + String(SUPABASE_KEY));
+    http.addHeader("Prefer", "return=minimal");
+
+    String body = "{\"machine_id\":\"" + String(MACHINE_ID) +
+                  "\",\"current_a\":" + String(currentAmps, 2) +
+                  ",\"timestamp\":" + String((long long)epochMs()) + "}";
+
+    int code = http.POST(body);
+    if (code <= 0) {
+        Serial.print("[HTTP] fail code=");
+        Serial.println(code);
+        Serial.println(http.errorToString(code).c_str());
+    } else if (code >= 400) {
+        Serial.print("[HTTP] ");
+        Serial.print(code);
+        Serial.print(" ");
+        Serial.println(http.getString());
+    } else if (code >= 200 && code < 300) {
+        static int okCount = 0;
+        okCount++;
+        if (okCount == 1 || okCount % 15 == 0) {
+            Serial.print("[HTTP] ");
+            Serial.print(code);
+            Serial.print(" ok=");
+            Serial.println(okCount);
+        }
+    }
     http.end();
+    return code;
 }
 
-// ===================== SETUP =====================
 void setup() {
     Serial.begin(115200);
     delay(1000);
 
     pinMode(PIN_SCT013, INPUT);
+    analogSetAttenuation(ADC_11db);
+    analogSetWidth(12);
 
-    Serial.println("{\"type\":\"boot\",\"message\":\"SCT-013-030 30A listo\"}");
+    Serial.println("[BOOT] SCT-013-030 30A listo");
 
-    // Conectar WiFi
+    long sum = 0;
+    for (int i = 0; i < 2000; i++) {
+        sum += analogRead(PIN_SCT013);
+        delayMicroseconds(100);
+    }
+    float measured = sum / 2000.0;
+    adcOffset = measured;
+
+    Serial.print("[CAL] measured=");
+    Serial.print(measured, 1);
+    Serial.print(" offset=");
+    Serial.print(adcOffset, 1);
+    if (measured < 100.0 || measured > 3900.0) {
+        Serial.print(" WARN=bias?");
+    }
+    Serial.println();
+
     WiFi.begin(WIFI_SSID, WIFI_PASS);
-    Serial.print("WiFi");
-    while (WiFi.status() != WL_CONNECTED) {
+    Serial.print("[WIFI]");
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
         delay(500);
         Serial.print(".");
+        attempts++;
     }
-    Serial.println(" OK");
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println(" OK");
+        Serial.print("[IP] ");
+        Serial.println(WiFi.localIP());
 
-    Serial.println("{\"type\":\"ready\",\"message\":\"Sistema listo\"}");
+        configTime(-5 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+        struct tm timeinfo;
+        int ntpTry = 0;
+        while (!getLocalTime(&timeinfo, 2000) && ntpTry < 10) {
+            ntpTry++;
+            delay(500);
+        }
+        if (ntpTry < 10) {
+            Serial.println("[NTP] OK");
+        } else {
+            Serial.println("[NTP] FAIL (usara millis)");
+        }
+    } else {
+        Serial.println(" FAIL");
+    }
+
+    Serial.println("[READY] Sistema listo");
 }
 
-// ===================== LOOP =====================
 void loop() {
     unsigned long now = millis();
 
-    // Leer sensor cada segundo
-    if (now - lastSend >= 1000) {
+    if (now - lastSend >= SEND_INTERVAL_MS) {
         lastSend = now;
 
         currentAmps = readCurrentRMS();
 
-        // Enviar por Serial
-        sendSensorData();
+        Serial.print("[SENSOR] amps=");
+        Serial.print(currentAmps, 2);
+        Serial.print(" ts=");
+        Serial.println(epochMs());
 
-        // Subir a Firebase
-        uploadToFirebase();
+        int code = uploadToSupabase();
+        if (code >= 200 && code < 300) {
+            uploadFails = 0;
+        } else if (code > 0) {
+            uploadFails++;
+            if (uploadFails == 1 || uploadFails % 10 == 0) {
+                Serial.print("[UPLOAD] rejected count=");
+                Serial.println(uploadFails);
+            }
+        }
     }
 }

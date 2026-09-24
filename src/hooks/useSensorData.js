@@ -14,11 +14,13 @@ export function useSensorData(rtdbId, notificationsEnabled) {
   const lastAlertSent = useRef('');
 
   const processNewReading = useCallback((row) => {
-    if (!row || typeof row.timestamp !== 'number') return;
+    if (!row) return;
+    const ts = Number(row.timestamp);
+    if (!Number.isFinite(ts) || ts <= 0) return;
 
     setReadings((prev) => {
       const next = [...prev, {
-        time: format(new Date(row.timestamp), 'HH:mm:ss'),
+        time: format(new Date(ts), 'HH:mm:ss'),
         value: parseFloat((row.current_a || 0).toFixed(2)),
       }];
       return next.slice(-60);
@@ -34,10 +36,10 @@ export function useSensorData(rtdbId, notificationsEnabled) {
     if (
       status.level === 'critical' &&
       notificationsEnabled &&
-      row.timestamp &&
-      lastAlertSent.current !== row.timestamp
+      ts &&
+      lastAlertSent.current !== ts
     ) {
-      lastAlertSent.current = row.timestamp;
+      lastAlertSent.current = ts;
       if ('Notification' in window && Notification.permission === 'granted') {
         new Notification(`Alerta: ${status.message}`, {
           body: status.maintenance || 'Revisa la maquina de inyeccion',
@@ -47,11 +49,11 @@ export function useSensorData(rtdbId, notificationsEnabled) {
     }
   }, [notificationsEnabled]);
 
-  const fetchInitialReadings = useCallback(async (userId) => {
+  const fetchInitialReadings = useCallback(async (machineId) => {
     const { data, error } = await supabase
       .from('sensor_readings')
       .select('*')
-      .eq('user_id', userId)
+      .eq('machine_id', machineId)
       .order('timestamp', { ascending: false })
       .limit(60);
     if (error || !data) return;
@@ -60,7 +62,7 @@ export function useSensorData(rtdbId, notificationsEnabled) {
     if (list.length === 0) return;
 
     setReadings(list.map((r) => ({
-      time: format(new Date(r.timestamp), 'HH:mm:ss'),
+      time: format(new Date(Number(r.timestamp)), 'HH:mm:ss'),
       value: parseFloat((r.current_a || 0).toFixed(2)),
     })));
 
@@ -86,13 +88,14 @@ export function useSensorData(rtdbId, notificationsEnabled) {
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
           schema: 'public',
           table: 'sensor_readings',
-          filter: `user_id=eq.${rtdbId}`,
         },
         (payload) => {
-          processNewReading(payload.new);
+          if (payload.new && payload.new.machine_id === rtdbId) {
+            processNewReading(payload.new);
+          }
         }
       )
       .subscribe((status) => {
