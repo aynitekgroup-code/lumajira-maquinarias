@@ -2,8 +2,11 @@ import { getAIRecommendation } from '../services/openrouter';
 
 export const ALERT_THRESHOLDS = {
   current: {
-    warning: 8.0,
-    critical: 10.0,
+    // Banda de 340W @ 110V = 3.09A nominal
+    low_critical: 0.8,
+    low_warning: 1.6,
+    warning: 3.7,
+    critical: 4.3,
     unit: 'A',
     label: 'Corriente SCT-013',
   },
@@ -18,38 +21,48 @@ export const ALERT_THRESHOLDS = {
 };
 
 export function analyzeCurrentReading(amps) {
-  if (amps >= ALERT_THRESHOLDS.current.critical) {
+  const T = ALERT_THRESHOLDS.current;
+  if (amps >= T.critical) {
     return {
       level: 'critical',
       color: '#e24b4a',
       bg: '#fcebeb',
-      message: `⚡ ALERTA CRÍTICA: Corriente ${amps.toFixed(1)}A supera límite crítico. Detener máquina.`,
-      maintenance: 'Inspección inmediata de resistencias de banda. Posible cortocircuito.',
+      message: `⚡ ALERTA CRÍTICA: Corriente ${amps.toFixed(1)}A supera límite crítico (${T.critical}A). Detener máquina.`,
+      maintenance: 'Inspección inmediata de resistencia de banda. Posible cortocircuito o degradación grave.',
     };
   }
-  if (amps >= ALERT_THRESHOLDS.current.warning) {
+  if (amps >= T.warning) {
     return {
       level: 'warning',
       color: '#ba7517',
       bg: '#faeeda',
-      message: `⚠️ ADVERTENCIA: Corriente ${amps.toFixed(1)}A elevada. Monitorear de cerca.`,
-      maintenance: 'Revisar resistencias de banda en próximas 2 horas. Posible desgaste.',
+      message: `⚠️ ADVERTENCIA: Corriente ${amps.toFixed(1)}A elevada (nominal 3.1A). Monitorear de cerca.`,
+      maintenance: 'Revisar resistencia de banda en próximas 2 horas. Posible desgaste.',
     };
   }
-  if (amps < 0.5) {
+  if (amps <= T.low_critical) {
+    return {
+      level: 'critical',
+      color: '#e24b4a',
+      bg: '#fcebeb',
+      message: `⚡ ALERTA CRÍTICA: Corriente ${amps.toFixed(2)}A — resistencia apagada o desconectada.`,
+      maintenance: 'Verificar termostato, cableado y continuidad de la resistencia de banda. Posible resistencia quemada.',
+    };
+  }
+  if (amps < T.low_warning) {
     return {
       level: 'warning',
       color: '#ba7517',
       bg: '#faeeda',
-      message: `⚠️ ADVERTENCIA: Corriente muy baja (${amps.toFixed(1)}A). Verificar conexiones.`,
-      maintenance: 'Verificar que las resistencias están encendidas y bien conectadas.',
+      message: `⚠️ ADVERTENCIA: Corriente muy baja (${amps.toFixed(2)}A). Verificar conexiones.`,
+      maintenance: 'Verificar que la resistencia está encendida (termostato) y bien conectada.',
     };
   }
   return {
     level: 'normal',
     color: '#0f6e56',
     bg: '#e1f5ee',
-    message: `✅ Corriente normal: ${amps.toFixed(1)}A`,
+    message: `✅ Corriente normal: ${amps.toFixed(2)}A`,
     maintenance: null,
   };
 }
@@ -106,15 +119,15 @@ export function predictiveMaintenance(readings) {
   const avg = recent.reduce((s, r) => s + r.value, 0) / recent.length;
   const trend = recent.slice(-5).reduce((s, r) => s + r.value, 0) / 5 - avg;
   const alerts = [];
-  if (trend > 0.5) {
+  if (trend > 0.3) {
     alerts.push({
       type: 'trend',
       level: 'warning',
-      message: 'Tendencia creciente de corriente detectada. Revisar calentamiento de resistencias.',
+      message: 'Tendencia creciente de corriente detectada. Revisar degradación de la resistencia de banda.',
     });
   }
   const variance = recent.reduce((s, r) => s + Math.pow(r.value - avg, 2), 0) / recent.length;
-  if (variance > 1.5) {
+  if (variance > 0.5) {
     alerts.push({
       type: 'instability',
       level: 'warning',

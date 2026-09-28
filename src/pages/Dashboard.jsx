@@ -182,8 +182,8 @@ export default function Dashboard() {
                 data={readings}
                 unit="A"
                 color={colors.primary}
-                warningLine={{ value: 8, label: 'Advertencia 8A' }}
-                criticalLine={{ value: 10, label: 'Critico 10A' }}
+                warningLine={{ value: 3.7, label: 'Advertencia 3.7A' }}
+                criticalLine={{ value: 4.3, label: 'Critico 4.3A' }}
                 emptyIcon="📡"
                 emptyMessage="Esperando datos del ESP32..."
                 emptyHint="Verifica que el ESP32 este conectado."
