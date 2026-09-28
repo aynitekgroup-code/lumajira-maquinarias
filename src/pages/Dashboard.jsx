@@ -10,6 +10,7 @@ import Navbar from '../components/Navbar';
 import MetricCard from '../components/MetricCard';
 import AlertsList from '../components/AlertsList';
 import SensorChart from '../components/SensorChart';
+import ThresholdPanel from '../components/ThresholdPanel';
 import DashboardSkeleton from '../components/DashboardSkeleton';
 import MachineSelector, { MachineHeader, EmptyMachines } from '../components/MachineSelector';
 import { colors } from '../styles/theme';
@@ -176,18 +177,27 @@ export default function Dashboard() {
                 latestCurrent={latestReading?.value}
               />
 
-              <SensorChart
-                title="Corriente en tiempo real — SCT-013"
-                subtitle={`Sensor de corriente · ${selectedMachine?.name}`}
-                data={readings}
-                unit="A"
-                color={colors.primary}
-                warningLine={{ value: 3.7, label: 'Advertencia 3.7A' }}
-                criticalLine={{ value: 4.3, label: 'Critico 4.3A' }}
-                emptyIcon="📡"
-                emptyMessage="Esperando datos del ESP32..."
-                emptyHint="Verifica que el ESP32 este conectado."
-              />
+              <style>{`@media (max-width: 960px) { .chart-grid { grid-template-columns: 1fr !important; } }`}</style>
+              <div className="chart-grid" style={{
+                display: 'grid',
+                gridTemplateColumns: 'minmax(0, 1fr) 300px',
+                gap: '1rem',
+                alignItems: 'start',
+              }}>
+                <SensorChart
+                  title="Corriente en tiempo real — SCT-013"
+                  subtitle={`Sensor de corriente · ${selectedMachine?.name}`}
+                  data={readings}
+                  unit="A"
+                  color={colors.primary}
+                  warningLine={{ value: 3.7, label: 'Advertencia 3.7A' }}
+                  criticalLine={{ value: 4.3, label: 'Critico 4.3A' }}
+                  emptyIcon="📡"
+                  emptyMessage="Esperando datos del ESP32..."
+                  emptyHint="Verifica que el ESP32 este conectado."
+                />
+                <ThresholdPanel />
+              </div>
             </>
           )}
         </div>
