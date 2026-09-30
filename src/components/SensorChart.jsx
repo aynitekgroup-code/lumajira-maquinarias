@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react';
+import { format } from 'date-fns';
 import { colors } from '../styles/theme';
 
 const Chart = lazy(() => import('./SensorChartInner'));
@@ -39,6 +40,34 @@ export default function SensorChart({
           <span style={{ fontSize: '0.8rem', color: colors.textMuted }}>{subtitle}</span>
         )}
       </div>
+      {data.length > 0 && data[data.length - 1]?.ts && (
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '0.5rem',
+          background: 'rgba(59,130,246,0.08)',
+          border: `1px solid ${colors.border}`,
+          borderRadius: '8px',
+          padding: '0.5rem 0.75rem',
+          marginBottom: '1rem',
+          fontSize: '0.8rem',
+        }}>
+          <span style={{ color: colors.textMuted }}>
+            📋 Reporte de medición:{' '}
+            <strong style={{ color: colors.white }}>
+              {format(new Date(data[data.length - 1].ts), "dd/MM/yyyy 'a las' HH:mm:ss")}
+            </strong>
+          </span>
+          <span style={{ color: colors.textMuted }}>
+            Último valor:{' '}
+            <strong style={{ color: colors.primary }}>
+              {data[data.length - 1].value} {unit}
+            </strong>
+          </span>
+        </div>
+      )}
       {data.length > 0 ? (
         <Suspense fallback={
           <div className="skeleton" style={{ height: 280, width: '100%' }} />

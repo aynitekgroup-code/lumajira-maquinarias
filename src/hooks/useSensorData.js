@@ -21,6 +21,7 @@ export function useSensorData(rtdbId, notificationsEnabled) {
     setReadings((prev) => {
       const next = [...prev, {
         time: format(new Date(ts), 'HH:mm:ss'),
+        ts,
         value: parseFloat((row.current_a || 0).toFixed(2)),
       }];
       return next.slice(-60);
@@ -63,6 +64,7 @@ export function useSensorData(rtdbId, notificationsEnabled) {
 
     setReadings(list.map((r) => ({
       time: format(new Date(Number(r.timestamp)), 'HH:mm:ss'),
+      ts: Number(r.timestamp),
       value: parseFloat((r.current_a || 0).toFixed(2)),
     })));
 

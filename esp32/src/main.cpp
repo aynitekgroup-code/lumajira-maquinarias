@@ -19,6 +19,34 @@ float currentAmps = 0.0;
 float adcOffset = 2048.0;
 unsigned long lastSend = 0;
 int uploadFails = 0;
+unsigned long lastWifiCheck = 0;
+int wifiFails = 0;
+
+void ensureWiFi() {
+    if (WiFi.status() == WL_CONNECTED) return;
+
+    unsigned long now = millis();
+    if (now - lastWifiCheck < 5000) return;
+    lastWifiCheck = now;
+
+    wifiFails++;
+    Serial.print("[WIFI] disconnected, reconnecting... attempt=");
+    Serial.println(wifiFails);
+
+    WiFi.disconnect();
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
+    unsigned long t = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - t < 10000) {
+        delay(200);
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.print("[WIFI] OK IP=");
+        Serial.println(WiFi.localIP());
+        wifiFails = 0;
+    }
+}
+
 
 float readCurrentRMS() {
     long sumSquares = 0;
@@ -45,7 +73,10 @@ int64_t epochMs() {
 }
 
 int uploadToSupabase() {
-    if (WiFi.status() != WL_CONNECTED) return -1;
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("[HTTP] skipped: wifi down");
+        return -1;
+    }
 
     HTTPClient http;
     String url = "https://" + String(SUPABASE_HOST) + "/rest/v1/sensor_readings";
@@ -148,6 +179,8 @@ void loop() {
 
     if (now - lastSend >= SEND_INTERVAL_MS) {
         lastSend = now;
+
+        ensureWiFi();
 
         currentAmps = readCurrentRMS();
 
