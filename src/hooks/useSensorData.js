@@ -6,6 +6,15 @@ import {
   predictiveMaintenance,
 } from '../utils/alerts';
 
+// Usa created_at (hora del servidor Supabase) si el timestamp del ESP32
+// no es un epoch-ms valido (NTP no sincronizado -> devolviendo millis de boot)
+function readingTs(row) {
+  const ts = Number(row.timestamp);
+  if (Number.isFinite(ts) && ts > 1e12) return ts;
+  const created = Date.parse(row.created_at);
+  return Number.isFinite(created) ? created : ts;
+}
+
 export function useSensorData(rtdbId, notificationsEnabled) {
   const [readings, setReadings] = useState([]);
   const [alerts, setAlerts] = useState([]);
@@ -15,7 +24,7 @@ export function useSensorData(rtdbId, notificationsEnabled) {
 
   const processNewReading = useCallback((row) => {
     if (!row) return;
-    const ts = Number(row.timestamp);
+    const ts = readingTs(row);
     if (!Number.isFinite(ts) || ts <= 0) return;
 
     setReadings((prev) => {
@@ -55,7 +64,7 @@ export function useSensorData(rtdbId, notificationsEnabled) {
       .from('sensor_readings')
       .select('*')
       .eq('machine_id', machineId)
-      .order('timestamp', { ascending: false })
+      .order('created_at', { ascending: false })
       .limit(60);
     if (error || !data) return;
 
@@ -63,8 +72,8 @@ export function useSensorData(rtdbId, notificationsEnabled) {
     if (list.length === 0) return;
 
     setReadings(list.map((r) => ({
-      time: format(new Date(Number(r.timestamp)), 'HH:mm:ss'),
-      ts: Number(r.timestamp),
+      time: format(new Date(readingTs(r)), 'HH:mm:ss'),
+      ts: readingTs(r),
       value: parseFloat((r.current_a || 0).toFixed(2)),
     })));
 

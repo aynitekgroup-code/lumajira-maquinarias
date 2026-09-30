@@ -21,6 +21,7 @@ unsigned long lastSend = 0;
 int uploadFails = 0;
 unsigned long lastWifiCheck = 0;
 int wifiFails = 0;
+unsigned long lastNtpCheck = 0;
 
 void ensureWiFi() {
     if (WiFi.status() == WL_CONNECTED) return;
@@ -70,6 +71,27 @@ int64_t epochMs() {
     struct timeval tv;
     gettimeofday(&tv, nullptr);
     return (int64_t)tv.tv_sec * 1000LL + tv.tv_usec / 1000LL;
+}
+
+bool timeSynced() {
+    return time(nullptr) > 1600000000L;
+}
+
+void syncNTP() {
+    if (timeSynced()) return;
+    configTime(-5 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+    struct tm timeinfo;
+    int ntpTry = 0;
+    while (!getLocalTime(&timeinfo, 1500) && ntpTry < 8) {
+        ntpTry++;
+        delay(300);
+    }
+    if (timeSynced()) {
+        Serial.print("[NTP] OK epochMs=");
+        Serial.println(epochMs());
+    } else {
+        Serial.println("[NTP] pending (retry en 30s)");
+    }
 }
 
 int uploadToSupabase() {
@@ -154,19 +176,7 @@ void setup() {
         Serial.println(" OK");
         Serial.print("[IP] ");
         Serial.println(WiFi.localIP());
-
-        configTime(-5 * 3600, 0, "pool.ntp.org", "time.nist.gov");
-        struct tm timeinfo;
-        int ntpTry = 0;
-        while (!getLocalTime(&timeinfo, 2000) && ntpTry < 10) {
-            ntpTry++;
-            delay(500);
-        }
-        if (ntpTry < 10) {
-            Serial.println("[NTP] OK");
-        } else {
-            Serial.println("[NTP] FAIL (usara millis)");
-        }
+        syncNTP();
     } else {
         Serial.println(" FAIL");
     }
@@ -176,6 +186,11 @@ void setup() {
 
 void loop() {
     unsigned long now = millis();
+
+    if (!timeSynced() && WiFi.status() == WL_CONNECTED && now - lastNtpCheck >= 30000) {
+        lastNtpCheck = now;
+        syncNTP();
+    }
 
     if (now - lastSend >= SEND_INTERVAL_MS) {
         lastSend = now;
