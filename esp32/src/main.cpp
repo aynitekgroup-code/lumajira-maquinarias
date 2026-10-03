@@ -16,11 +16,9 @@
 //   Motor 2 (rotacion) : PUL=13 DIR=12 ENA=14
 //   Sensor SCT-013     : GPIO34
 //
-// !!! AVISO GPIO12 (DIR M2): es pin de "strapping" del ESP32.
-// Debe estar en LOW durante el arranque o la flash arranca a 1.8V
-// y la placa no bootea / no se deja grabar (ya nos paso con COM6).
-// Si la placa no arranca o no graba: mueve DIR M2 a GPIO32 (u otro
-// libre: 33, 19, 18, 5, 23) y actualiza PIN_M2_DIR.
+// !!! GPIO12 PROHIBIDO (era DIR M2): es pin de "strapping".
+// En HIGH durante el arranque pone la flash a 1.8V: la placa no
+// bootea ni graba. DIR M2 vive ahora en GPIO32.
 // ============================================================
 
 const char* WIFI_SSID = "Josepro";
@@ -38,7 +36,7 @@ const char* MACHINE_ID = "de570528-0f87-4c5b-9548-5d94fac03635";
 #define PIN_M1_ENA 25
 
 #define PIN_M2_PUL 13
-#define PIN_M2_DIR 12   // OJO: strapping. Ver aviso arriba.
+#define PIN_M2_DIR 32   // GPIO12 prohibido: strapping de voltaje flash
 #define PIN_M2_ENA 14
 
 // TB6600: ENA optoacoplado. Con PUL+/DIR+/ENA+ a 5V y los "-" al

@@ -11,6 +11,7 @@ import MetricCard from '../components/MetricCard';
 import AlertsList from '../components/AlertsList';
 import SensorChart from '../components/SensorChart';
 import ThresholdPanel from '../components/ThresholdPanel';
+import ControlPanel from '../components/ControlPanel';
 import DashboardSkeleton from '../components/DashboardSkeleton';
 import MachineSelector, { MachineHeader, EmptyMachines } from '../components/MachineSelector';
 import { colors } from '../styles/theme';
@@ -197,6 +198,10 @@ export default function Dashboard() {
                   emptyHint="Verifica que el ESP32 este conectado."
                 />
                 <ThresholdPanel />
+              </div>
+
+              <div style={{ marginTop: '1rem' }}>
+                <ControlPanel rtdbId={rtdbId} user={user} showToast={showToast} />
               </div>
             </>
           )}
