@@ -70,19 +70,23 @@ bool estop = false;        // paro de emergencia
 String lastSeenCmd = "";   // created_at del ultimo comando procesado
 bool firstPoll = true;
 
-// ---------- Motores (no bloqueante) ----------
+// ---------- Motores por timer HW (pulso exacto aunque el HTTP bloquee) ----------
+// El loop() se bloquea segundos en cada HTTPS (handshake TLS). Con pulsos
+// por software el motor se moria de hambre. Ahora un timer cada 100us
+// genera los pulsos en ISR; el loop solo configura y lee estado.
 struct Stepper {
     Stepper(const char* n, uint8_t p, uint8_t d, uint8_t e) : name(n), pul(p), dir(d), ena(e) {}
     const char* name;
     uint8_t pul, dir, ena;
-    bool enabled = false;
-    bool running = false;
-    bool remote = false;      // ordenado desde plataforma/serial (pausa ciclo auto)
-    int speedPct = 50;        // 10..100
-    unsigned long stepIntervalUs = 625; // ~1 rev/s a 1600 p/rev
-    unsigned long lastStepUs = 0;
-    long stepsRemaining = 0;  // -1 = continuo, 0 = detenido, >0 = cuenta atras
-    long stepsDone = 0;
+    volatile bool enabled = false;
+    volatile bool running = false;
+    volatile bool remote = false;      // ordenado desde plataforma/serial (pausa ciclo auto)
+    volatile int speedPct = 50;        // 10..100
+    volatile unsigned long stepIntervalUs = 625; // ~1 rev/s a 1600 p/rev
+    volatile long stepsRemaining = 0;  // -1 = continuo, 0 = detenido, >0 = cuenta atras
+    volatile long stepsDone = 0;
+    volatile long countdownUs = 0;
+    volatile bool finished = false;    // la ISR avisa tramo terminado
 };
 
 Stepper m1 = {"M1", PIN_M1_PUL, PIN_M1_DIR, PIN_M1_ENA};
@@ -120,29 +124,45 @@ static void stepperMove(Stepper& m, long steps, bool dirHigh, int speed) {
     stepperEnable(m, true);
     m.stepsRemaining = steps;
     m.stepsDone = 0;
-    m.lastStepUs = micros();
+    m.finished = false;
+    m.countdownUs = (long)m.stepIntervalUs;
     m.running = true;
     Serial.printf("[%s] marcha dir=%s pasos=%ld vel=%d%% (%luus/paso)\n",
                   m.name, dirHigh ? "CW" : "CCW", steps, m.speedPct, m.stepIntervalUs);
 }
 
-static void stepperUpdate(Stepper& m) {
-    if (!m.running || !m.enabled || estop) return;
-    if (m.stepsRemaining == 0) { m.running = false; return; }
-    unsigned long now = micros();
-    if (now - m.lastStepUs >= m.stepIntervalUs) {
-        m.lastStepUs = now;
-        digitalWrite(m.pul, HIGH);
-        delayMicroseconds(5); // TB6600 pide pulso > 2.5us
-        digitalWrite(m.pul, LOW);
-        m.stepsDone++;
-        if (m.stepsRemaining > 0) {
-            m.stepsRemaining--;
-            if (m.stepsRemaining == 0) {
-                m.running = false;
-                m.remote = false;
-                Serial.printf("[%s] tramo listo (%ld pasos)\n", m.name, m.stepsDone);
+hw_timer_t* stepTimer = nullptr;
+
+void IRAM_ATTR stepTimerISR() {
+    Stepper* ms[2] = {&m1, &m2};
+    for (int i = 0; i < 2; i++) {
+        Stepper& m = *ms[i];
+        if (!m.running || !m.enabled) continue;
+        if (m.stepsRemaining == 0) { m.running = false; m.finished = true; continue; }
+        m.countdownUs -= 100;
+        if (m.countdownUs <= 0) {
+            m.countdownUs += (long)m.stepIntervalUs;
+            digitalWrite(m.pul, HIGH);
+            delayMicroseconds(3); // TB6600 pide pulso > 2.5us
+            digitalWrite(m.pul, LOW);
+            m.stepsDone++;
+            if (m.stepsRemaining > 0) {
+                m.stepsRemaining--;
+                if (m.stepsRemaining == 0) { m.running = false; m.finished = true; }
             }
+        }
+    }
+}
+
+// Avisos de tramo listo (desde el loop, la ISR no imprime)
+static void stepperPollFinished() {
+    Stepper* ms[2] = {&m1, &m2};
+    for (int i = 0; i < 2; i++) {
+        Stepper& m = *ms[i];
+        if (m.finished) {
+            m.finished = false;
+            m.remote = false;
+            Serial.printf("[%s] tramo listo (%ld pasos)\n", m.name, (long)m.stepsDone);
         }
     }
 }
@@ -360,7 +380,7 @@ static void upsertStatus() {
     client.setInsecure();
     client.setTimeout(8000);
     HTTPClient http;
-    String url = "https://" + String(SUPABASE_HOST) + "/rest/v1/machine_status";
+    String url = "https://" + String(SUPABASE_HOST) + "/rest/v1/machine_status?on_conflict=machine_id";
     http.begin(client, url);
     http.setTimeout(8000);
     sbHeaders(http);
@@ -448,6 +468,11 @@ void setup() {
     stepperEnable(m1, true);
     stepperEnable(m2, true);
 
+    stepTimer = timerBegin(0, 80, true); // 80MHz/80 = 1us por tick
+    timerAttachInterrupt(stepTimer, &stepTimerISR, true);
+    timerAlarmWrite(stepTimer, 100, true); // tick 100us
+    timerAlarmEnable(stepTimer);
+
     Serial.println("[BOOT] ESP32 + SCT-013 + 2x NEMA23/TB6600 listo");
     Serial.println("[BOOT] Escribe 'help' para comandos de prueba");
 
@@ -479,8 +504,7 @@ void loop() {
     }
 
     handleSerial();          // comandos USB
-    stepperUpdate(m1);       // pulsos no bloqueantes
-    stepperUpdate(m2);
+    stepperPollFinished();   // avisos de tramo listo (pulsos van por ISR)
     autoCycle();             // ciclo de prueba si nada remoto lo usa
 
     if (now - lastSend >= SEND_INTERVAL_MS) {
