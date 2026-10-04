@@ -413,7 +413,7 @@ static void handleSerial() {
     line.trim(); line.toLowerCase();
     if (line.length() == 0) return;
     if (line == "help") {
-        Serial.println("cmd: m1 <pasos|0=cont> [vel 10-100] [cw|ccw] | m2 ... | stop | auto on|off | estop | reset | status");
+        Serial.println("cmd: m1 <pasos|0=cont> [vel 10-100] [cw|ccw] | m2 ... | stop | auto on|off | estop | reset | status | pulsetest");
         return;
     }
     if (line == "stop") { stopAll("serial"); return; }
@@ -422,6 +422,27 @@ static void handleSerial() {
     if (line == "status") {
         Serial.printf("auto=%d estop=%d M1 run=%d pasos=%ld M2 run=%d pasos=%ld I=%.2fA\n",
                       autoMode, estop, m1.running, (long)m1.stepsDone, m2.running, (long)m2.stepsDone, currentAmps);
+        return;
+    }
+    if (line == "pulsetest") {
+        // 1 pulso/segundo por 10s en ambos PUL: medible con multimetro
+        // entre PUL- y GND (debe oscilar 0V<->5V). Pausa el ciclo auto.
+        bool savedAuto = autoMode;
+        autoMode = false;
+        stopAll("pulsetest");
+        stepperEnable(m1, true);
+        stepperEnable(m2, true);
+        Serial.println("[TEST] 10 pulsos lentos en M1.PUL y M2.PUL...");
+        for (int i = 0; i < 10; i++) {
+            digitalWrite(m1.pul, HIGH); digitalWrite(m2.pul, HIGH);
+            Serial.printf("[TEST] pulso %d HIGH\n", i + 1);
+            delay(500);
+            digitalWrite(m1.pul, LOW); digitalWrite(m2.pul, LOW);
+            Serial.printf("[TEST] pulso %d LOW\n", i + 1);
+            delay(500);
+        }
+        Serial.println("[TEST] fin. Revisa multimetro y movimiento.");
+        autoMode = savedAuto;
         return;
     }
     if (line.startsWith("auto")) {
