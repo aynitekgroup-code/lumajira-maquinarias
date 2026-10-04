@@ -39,11 +39,10 @@ const char* MACHINE_ID = "de570528-0f87-4c5b-9548-5d94fac03635";
 #define PIN_M2_DIR 32   // GPIO12 prohibido: strapping de voltaje flash
 #define PIN_M2_ENA 14
 
-// TB6600: ENA optoacoplado. Con PUL+/DIR+/ENA+ a 5V y los "-" al
-// conversor de nivel: ENA en LOW = driver habilitado (motor frenado),
-// ENA en HIGH = driver liberado. Si tu motor queda libre cuando deberia
-// estar frenado, cambia a false.
-#define ENA_ACTIVE_LOW true
+// TB6600 (clon negro de 4A): ENA en HIGH = driver habilitado
+// (motor frenado), ENA en LOW = driver liberado (eje libre).
+// Si el eje queda libre con el sistema encendido, vuelve a true.
+#define ENA_ACTIVE_LOW false
 
 // 1600 pulsos/rev (DIP TB6600: OFF-ON-ON en S1-S2-S3 tipico 1600).
 // Si cambias microstepping, actualiza este valor.
