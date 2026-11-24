@@ -3,7 +3,7 @@ const { analyzeProspect } = require('../server/linkedin-prospect');
 const { createClient } = require('@supabase/supabase-js');
 
 const EMAIL = 'aynitek.group@gmail.com';
-const BASE = 'https://lumajirahub.com';
+const ALLOWED_ORIGINS = new Set(['https://lumajirahub.com', 'https://www.lumajirahub.com']);
 function end(res, status, body) { return res.status(status).json(body); }
 
 module.exports = async function handler(req, res) {
@@ -19,7 +19,7 @@ module.exports = async function handler(req, res) {
     if (error || !data.user || data.user.email?.toLowerCase() !== EMAIL || !data.user.email_confirmed_at) return end(res, 401, { error: 'Inicia sesión con la cuenta autorizada.' });
     const action = req.query.action;
     if (action === 'session' && req.method === 'GET') return end(res, 200, { email: EMAIL });
-    if (req.method !== 'POST' || req.headers.origin !== BASE) return end(res, 403, { error: 'Solicitud no autorizada.' });
+    if (req.method !== 'POST' || !ALLOWED_ORIGINS.has(req.headers.origin)) return end(res, 403, { error: 'Solicitud no autorizada.' });
     const value = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
     if (!value || value.length > (action === 'publish' ? 3000 : 2000)) return end(res, 400, { error: 'El texto está vacío o supera el límite permitido.' });
     if (action === 'draft') return end(res, 200, { text: await draftPost(value) });
