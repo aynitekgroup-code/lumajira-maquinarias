@@ -1,6 +1,8 @@
 import React from 'react';
+import Admin from './Admin';
 
 export default function App() {
+  if (window.location.pathname === '/admin') return <Admin />;
   return (
     <div className="site">
       <header className="header"><a className="brand" href="#inicio"><img className="brand-logo" src="/logo.png" alt="LumaControl" /></a><nav aria-label="Navegación principal"><a href="#vision">Visión</a><a href="#soluciones">Soluciones</a><a className="nav-button" href="#contacto">Conversemos <span>↗</span></a></nav></header>
