@@ -1,5 +1,6 @@
 ﻿const { draftPost, publishPost } = require('../server/linkedin-agent');
 const { analyzeProspect } = require('../server/linkedin-prospect');
+const { analyzeWorkanaProject } = require('../server/workana-agent');
 const { createClient } = require('@supabase/supabase-js');
 
 const EMAIL = 'aynitek.group@gmail.com';
@@ -24,6 +25,7 @@ module.exports = async function handler(req, res) {
     if (!value || value.length > (action === 'publish' ? 3000 : 2000)) return end(res, 400, { error: 'El texto está vacío o supera el límite permitido.' });
     if (action === 'draft') return end(res, 200, { text: await draftPost(value) });
     if (action === 'prospect') return end(res, 200, { text: await analyzeProspect(value) });
+    if (action === 'workana') return end(res, 200, { text: await analyzeWorkanaProject(value) });
     if (action === 'publish') {
       if (req.body.confirm !== true) return end(res, 400, { error: 'Debes confirmar la publicación.' });
       const id = await publishPost(value);
