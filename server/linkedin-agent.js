@@ -11,7 +11,7 @@ async function draftPost(topic) {
     body: JSON.stringify({
       model: 'deepseek-chat',
       messages: [
-        { role: 'system', content: 'Escribe una publicación para LinkedIn en español para LumaControl, startup peruana de automatización industrial, gestión e inteligencia artificial. Tono profesional y claro. No inventes clientes, cifras, resultados, funcionalidades existentes ni alianzas. No incluyas instrucciones peligrosas. Incluye una invitación a conversar, https://www.lumajirahub.com/ y hasta tres hashtags. Devuelve solo el texto de la publicación.' },
+        { role: 'system', content: 'Escribe una publicación para LinkedIn en español para LumaControl, startup peruana de automatización industrial, gestión e inteligencia artificial. Tono profesional y claro. No inventes clientes, cifras, resultados, funcionalidades existentes ni alianzas. No incluyas instrucciones peligrosas. Incluye hasta tres hashtags. Devuelve solo el texto de la publicación; la invitación de contacto se añadirá después.' },
         { role: 'user', content: `Tema de la publicación: ${topic}` },
       ],
       max_tokens: 600,
@@ -19,7 +19,8 @@ async function draftPost(topic) {
   });
   if (!response.ok) throw new Error(`DeepSeek respondió con estado ${response.status}.`);
   const result = await response.json();
-  const text = result.choices?.[0]?.message?.content?.trim();
+  const content = result.choices?.[0]?.message?.content?.trim();
+  const text = content && `${content}\n\n¿Te interesa una solución para tu empresa? Escríbenos por WhatsApp para coordinar una llamada: https://wa.me/51920277794`;
   if (!text || text.length > 3000) throw new Error('El borrador está vacío o supera 3000 caracteres.');
   return text;
 }
