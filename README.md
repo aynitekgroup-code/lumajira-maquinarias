@@ -43,3 +43,7 @@ El panel llama a `api/admin.js`, una función de Vercel; `npm start` no ejecuta 
 ### Agente para Workana
 
 En el panel privado se puede pegar la descripción de una oportunidad de Workana para obtener una evaluación y una propuesta editable generadas con DeepSeek. El texto se envía a DeepSeek; no incluyas datos sensibles. El agente no busca proyectos, no accede a Workana, no guarda datos ni envía propuestas. El administrador debe verificar la información y las reglas de Workana antes de enviar cualquier propuesta manualmente.
+
+### Agente para Mercado Libre
+
+El panel permite preparar un título y descripción editables para un servicio en Mercado Libre Perú. El texto se envía a DeepSeek; no incluyas datos sensibles. El agente no accede a Mercado Libre, no verifica categorías o tarifas y no publica. El administrador debe revisar la categoría, condiciones, costos y contenido antes de publicar manualmente.
