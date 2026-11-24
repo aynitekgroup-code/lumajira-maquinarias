@@ -1,46 +1,16 @@
-import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './hooks/useAuth';
-import { ToastProvider } from './components/ui/Toast';
-import { LoadingScreen } from './components/DashboardSkeleton';
-import { initNativeUI } from './utils/native';
-import SplashPage from './pages/SplashPage';
-import AuthPage from './pages/AuthPage';
-import Dashboard from './pages/Dashboard';
-import AdminPanel from './pages/AdminPanel';
-
-function PrivateRoute({ children }) {
-  const { user, loading } = useAuth();
-  if (loading) return <LoadingScreen />;
-  return user ? children : <Navigate to="/login" replace />;
-}
-
-function AdminRoute({ children }) {
-  const { user, loading, isAdmin } = useAuth();
-  if (loading) return <LoadingScreen />;
-  if (!user) return <Navigate to="/login" replace />;
-  if (!isAdmin) return <Navigate to="/dashboard" replace />;
-  return children;
-}
+import React from 'react';
 
 export default function App() {
-  useEffect(() => {
-    initNativeUI();
-  }, []);
-
   return (
-    <ToastProvider>
-      <AuthProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<SplashPage />} />
-            <Route path="/login" element={<AuthPage />} />
-            <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-            <Route path="/admin" element={<AdminRoute><AdminPanel /></AdminRoute>} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrowserRouter>
-      </AuthProvider>
-    </ToastProvider>
+    <div className="site">
+      <header className="header"><a className="brand" href="#inicio"><span className="mark">L</span> LumaControl<span className="brand-dot">.</span></a><nav aria-label="Navegación principal"><a href="#vision">Visión</a><a href="#soluciones">Soluciones</a><a className="nav-button" href="#contacto">Conversemos <span>↗</span></a></nav></header>
+      <main id="inicio">
+        <section className="hero"><div className="hero-copy"><p className="eyebrow"><span /> INTELIGENCIA PARA LA INDUSTRIA</p><h1>La industria del futuro <em>empieza hoy.</em></h1><p className="lead">Transformamos talleres y fábricas tradicionales en operaciones inteligentes, conectadas y preparadas para crecer.</p><div className="actions"><a className="primary" href="#soluciones">Descubre nuestra visión <span>↗</span></a><a className="secondary" href="#vision">Conoce LumaControl <span>↓</span></a></div></div><div className="visual" aria-hidden="true"><div className="orbit orbit-one"/><div className="orbit orbit-two"/><div className="core"><span>✳</span><small>INTELIGENCIA<br/>CONECTADA</small></div><div className="node node-one"><b>01</b><span>OPERACIONES<br/><strong>Conectadas</strong></span><i>↗</i></div><div className="node node-two"><b>02</b><span>PROCESOS<br/><strong>Automatizados</strong></span><i>↗</i></div><div className="node node-three"><b>03</b><span>DECISIONES<br/><strong>Más inteligentes</strong></span><i>↗</i></div><div className="visual-caption">TECNOLOGÍA AL SERVICIO DE LA INDUSTRIA <span>✳</span></div></div></section>
+        <div className="ticker"><span>INDUSTRIA CONECTADA</span><b>✳</b><span>AUTOMATIZACIÓN</span><b>✳</b><span>INTELIGENCIA ARTIFICIAL</span><b>✳</b><span>GESTIÓN INTELIGENTE</span></div>
+        <section className="vision section" id="vision"><p className="eyebrow"><span /> NUESTRA VISIÓN</p><div><h2>La tecnología debe trabajar <em>para tu industria.</em></h2><p>Creemos en un futuro donde las máquinas, los procesos y las personas trabajan conectados. LumaControl nace para acercar la inteligencia industrial a cada taller y fábrica.</p></div></section>
+        <section className="solutions section" id="soluciones"><div className="section-heading"><div><p className="eyebrow"><span /> LO QUE NOS MUEVE</p><h2>Una operación.<br/><em>Más posibilidades.</em></h2></div><p>Una nueva forma de pensar la industria, desde el piso de producción hasta la gestión del negocio.</p></div><div className="cards"><article><span className="card-num">01 / CONECTAR</span><div className="card-icon">⌁</div><h3>Industria conectada</h3><p>Conectar máquinas, datos y personas para construir una visión integral de la operación.</p></article><article><span className="card-num">02 / AUTOMATIZAR</span><div className="card-icon">⟳</div><h3>Procesos inteligentes</h3><p>Impulsar la automatización de procesos industriales y de gestión para trabajar mejor.</p></article><article><span className="card-num">03 / EVOLUCIONAR</span><div className="card-icon">✳</div><h3>Agentes de IA</h3><p>Interconectar la operación con agentes de inteligencia artificial que apoyen la toma de decisiones.</p></article></div></section>
+        <section className="contact section" id="contacto"><p className="eyebrow"><span /> EL FUTURO SE CONSTRUYE JUNTOS</p><h2>Hagamos que tu industria <em>avance.</em></h2><p>La transformación comienza con una conversación.</p></section>
+      </main><footer><a className="brand" href="#inicio"><span className="mark">L</span> LumaControl<span className="brand-dot">.</span></a><span>Inteligencia para la industria.</span><a href="/privacidad">Privacidad ↗</a></footer>
+    </div>
   );
 }
